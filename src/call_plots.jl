@@ -59,8 +59,8 @@ plot = plot_demand(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems.get_available-Tuple{Component}): filter components included in plot
-"""
+- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
+"""  # ^ temporary workaround for https://github.com/NREL-Sienna/PowerSystems.jl/issues/1598
 
 function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
     return plot_demand!(_empty_plot(), result; kwargs...)
@@ -97,7 +97,7 @@ Plots the demand in the system.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems.get_available-Tuple{Component}): filter components included in plot
+- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
 """
 function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
@@ -412,7 +412,7 @@ plot = plot_fuel(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems.get_available-Tuple{Component}): filter components included in plot
+- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """
 function plot_fuel(result::IS.Results; kwargs...)
     return plot_fuel!(_empty_plot(), result; kwargs...)
@@ -446,7 +446,7 @@ and assigns each fuel type a specific color.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems.get_available-Tuple{Component}): filter components included in plot
+- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
 function plot_fuel!(p, result::IS.Results; kwargs...)
