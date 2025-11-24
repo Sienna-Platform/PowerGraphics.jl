@@ -30,11 +30,15 @@ const TEST_OUTPUTS = joinpath(BASE_DIR, "test", "test_results")
 !isdir(TEST_OUTPUTS) && mkdir(TEST_OUTPUTS)
 const TEST_RESULT_DIR = joinpath(TEST_OUTPUTS, "results")
 !isdir(TEST_RESULT_DIR) && mkdir(TEST_RESULT_DIR)
+const TEST_SIM_NAME = "results_sim"
 
 import PowerSystemCaseBuilder
 const PSB = PowerSystemCaseBuilder
 template_dir = joinpath(BASE_DIR, "report_templates")
 const generic_template = joinpath(template_dir, "generic_report_template.jmd")
+
+PA_DIR = string(dirname(dirname(pathof(PowerAnalytics))))
+include(joinpath(PA_DIR, "test", "test_data", "results_data.jl"))
 
 LOG_LEVELS = Dict(
     "Debug" => Logging.Debug,
@@ -85,7 +89,6 @@ function get_logging_level(env_name::String, default)
 end
 
 function run_tests()
-    include(joinpath(BASE_DIR, "test", "test_data", "results_data.jl"))
     console_level = get_logging_level("PS_CONSOLE_LOG_LEVEL", "Error")
     console_logger = ConsoleLogger(stderr, console_level)
     file_level = get_logging_level("PS_LOG_LEVEL", "Info")

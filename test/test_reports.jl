@@ -14,7 +14,7 @@ function test_reports(file_path::String; backend_pkg::String = "gr")
         out_path = joinpath(file_path, backend_pkg * "_reports")
         !isdir(out_path) && mkpath(out_path)
         report_out_path = joinpath(out_path, "test_report.html")
-        (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR)
+        (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
 
         PG.report(
             results_uc,
