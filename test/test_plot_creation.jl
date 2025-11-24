@@ -12,7 +12,7 @@ function test_plots(file_path::String; backend_pkg::String = "gr")
     cleanup = true
     @info("running tests with $backend_pkg with dispalay $set_display and cleanup $cleanup")
 
-    (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR)
+    (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
     problem_results = run_test_prob()
     gen_uc = get_generation_data(results_uc)
     gen_ed = get_generation_data(results_ed)
