@@ -1,16 +1,16 @@
 file_path = TEST_OUTPUTS
 
-function test_plots(file_path::String; backend_pkg::String = "gr")
-    if backend_pkg == "gr"
-        Plots.gr()
+function test_plots(file_path::String; backend_pkg::String = "cairomakie")
+    if backend_pkg == "cairomakie"
+        PG.cairomakie()
     elseif backend_pkg == "plotlyjs"
-        Plots.plotlyjs()
+        PG.plotlyjs()
     else
         throw(error("$backend_pkg backend_pkg not supported"))
     end
     set_display = false
     cleanup = true
-    @info("running tests with $backend_pkg with dispalay $set_display and cleanup $cleanup")
+    @info("running tests with $backend_pkg with display $set_display and cleanup $cleanup")
 
     (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
     problem_results = run_test_prob()
@@ -232,7 +232,7 @@ function test_plots(file_path::String; backend_pkg::String = "gr")
             save = out_path,
             aggregation = System,
         )
-        plot_length = backend_pkg == "gr" ? length(p.series_list) : length(p.data)
+        plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
         @test plot_length == 1
 
         p = PG.plot_demand(
@@ -242,7 +242,7 @@ function test_plots(file_path::String; backend_pkg::String = "gr")
             save = out_path,
             aggregation = ACBus,
         )
-        plot_length = backend_pkg == "gr" ? length(p.series_list) : length(p.data)
+        plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
         @test plot_length == 3
 
         list = readdir(out_path)

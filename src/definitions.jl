@@ -75,8 +75,9 @@ function all_subtypes(t::Type)
     return [split(string(s), ".")[end] for s in st]
 end
 
-function get_palette_gr(palette)
-    permutedims(getfield.(palette, :color))
+function get_palette_cairomakie(palette)
+    # CairoMakie expects an array of color objects
+    getfield.(palette, :color)
 end
 
 function get_palette_fuel(palette)
@@ -96,15 +97,14 @@ function get_palette_category(palette)
 end
 
 function get_palette_seriescolor(palette)
-    backend = Plots.backend()
-    return get_palette_seriescolor(backend, palette)
+    return get_palette_seriescolor(backend(), palette)
 end
 
-function get_palette_seriescolor(backend, palette)
-    return get_palette_gr(palette)
+function get_palette_seriescolor(backend::CairoMakieBackend, palette)
+    return get_palette_cairomakie(palette)
 end
 
-function get_palette_seriescolor(backend::Plots.PlotlyJSBackend, palette)
+function get_palette_seriescolor(backend::PlotlyJSBackend, palette)
     return get_palette_plotly(palette)
 end
 
@@ -112,12 +112,27 @@ const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
 const SUPPORTED_PLOTLY_SAVE_KWARGS =
     [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
 
-function match_fuel_colors(data::DataFrames.DataFrame, backend; palette = PALETTE)
-    if backend == Plots.PlotlyJSBackend()
-        color_range = get_palette_plotly_fuel(palette)
-    else
-        color_range = get_palette_fuel(palette)
+function match_fuel_colors(data::DataFrames.DataFrame, backend::CairoMakieBackend; palette = PALETTE)
+    color_range = get_palette_fuel(palette)
+    color_fuel =
+        DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
+    names = DataFrames.names(data)
+    default =
+        [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
+    for i in 2:length(names)
+        @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
+            :,
+            :colors,
+        ])
+        specific_color =
+            (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][:, :colors])[1]
+        default = hcat(default, specific_color)
     end
+    return default
+end
+
+function match_fuel_colors(data::DataFrames.DataFrame, backend::PlotlyJSBackend; palette = PALETTE)
+    color_range = get_palette_plotly_fuel(palette)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
     names = DataFrames.names(data)
