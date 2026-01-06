@@ -5,6 +5,7 @@ mutable struct CairoMakiePlot
     figure::CairoMakie.Figure
     axis::CairoMakie.Axis
     series_count::Int
+    has_legend::Bool  # Track if legend has been created
 end
 
 function set_seriescolor(seriescolor::Array, vars::Array)
@@ -18,7 +19,7 @@ end
 function _empty_plot(backend::CairoMakieBackend)
     fig = CairoMakie.Figure()
     ax = CairoMakie.Axis(fig[1, 1])
-    return CairoMakiePlot(fig, ax, 0)
+    return CairoMakiePlot(fig, ax, 0, false)
 end
 
 function _get_ylims(plot::CairoMakiePlot, plot_data)
@@ -82,7 +83,9 @@ function _dataframe_plots_internal(
     # Set axis properties
     plot.axis.xlabel = "$time_interval"
     plot.axis.ylabel = get(kwargs, :y_label, "")
-    plot.axis.title = title
+    if title != " "  # Only set title if not default
+        plot.axis.title = title
+    end
 
     if bar
         # Bar plot
@@ -198,9 +201,20 @@ function _dataframe_plots_internal(
     # Update series count
     plot.series_count += length(labels)
 
-    # Add legend if there are multiple series
+    # Add or update legend if there are series
+    # Delete old legend if it exists, then create a new one
     if plot.series_count > 0
-        CairoMakie.axislegend(plot.axis; position = :rt)
+        if plot.has_legend
+            # Remove the old legend before creating a new one
+            for elem in plot.figure.content
+                if elem isa CairoMakie.Legend
+                    delete!(elem)
+                end
+            end
+        end
+        # Create legend outside the axis area (similar to Plots.jl :outerright)
+        CairoMakie.Legend(plot.figure[1, 2], plot.axis)
+        plot.has_legend = true
     end
 
     # Display if requested
