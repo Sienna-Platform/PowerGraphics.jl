@@ -92,22 +92,24 @@ function _dataframe_plots_internal(
         plot_data = sum(data; dims = 1) ./ interval
 
         if stack
-            # Stacked bar plot
-            x_pos = 1
-            cumulative = 0.0
-            for (ix, label) in enumerate(reverse(labels))
-                val = plot_data[end - ix + 1]
-                color = seriescolor[end - ix + 1]
-                CairoMakie.barplot!(
-                    plot.axis,
-                    [x_pos],
-                    [val];
-                    color = color,
-                    offset = cumulative,
-                    label = string(label),
-                )
-                cumulative += val
-            end
+            # Stacked bar plot using CairoMakie's stack parameter
+            # All bars at x=1, with stack groups to create vertical stacking
+            x_data = ones(Int, length(labels))  # All at position 1
+            y_data = vec(plot_data)  # Heights
+            stack_groups = ones(Int, length(labels))  # All in same stack group
+
+            CairoMakie.barplot!(
+                plot.axis,
+                x_data,
+                y_data;
+                stack = stack_groups,
+                color = seriescolor[1:length(labels)],
+                # Note: label parameter doesn't work well with stacked bars in single call
+                # Will add legend entries manually if needed
+            )
+
+            # Set x-axis to show single bar
+            plot.axis.xticks = ([1], [""])
         else
             # Grouped bar plot
             x_positions = 1:length(labels)
@@ -121,7 +123,7 @@ function _dataframe_plots_internal(
                     label = string(label),
                 )
             end
-            plot.axis.xticks = (x_positions, string.(labels))
+            plot.axis.xticks = (collect(x_positions), string.(labels))
         end
         plot.axis.xgridvisible = false
     else
@@ -132,22 +134,44 @@ function _dataframe_plots_internal(
             for ix in 1:length(labels)
                 upper = cumulative .+ data[:, ix]
                 color = seriescolor[ix]
-                CairoMakie.band!(
-                    plot.axis,
-                    time_range,
-                    cumulative,
-                    upper;
-                    color = (color, 0.5),
-                    label = string(labels[ix]),
-                )
-                # Add line on top
-                CairoMakie.lines!(
-                    plot.axis,
-                    time_range,
-                    upper;
-                    color = color,
-                    linestyle = stair ? :steppost : :solid,
-                )
+
+                # Use stairs or band based on stair option
+                if stair
+                    # For stair plots, use stairs with fill
+                    CairoMakie.stairs!(
+                        plot.axis,
+                        time_range,
+                        upper;
+                        color = color,
+                        label = string(labels[ix]),
+                        step = :post,
+                    )
+                    # Add band for fill
+                    CairoMakie.band!(
+                        plot.axis,
+                        time_range,
+                        cumulative,
+                        upper;
+                        color = (color, 0.3),
+                    )
+                else
+                    # Regular area plot
+                    CairoMakie.band!(
+                        plot.axis,
+                        time_range,
+                        cumulative,
+                        upper;
+                        color = (color, 0.5),
+                        label = string(labels[ix]),
+                    )
+                    # Add line on top for better visibility
+                    CairoMakie.lines!(
+                        plot.axis,
+                        time_range,
+                        upper;
+                        color = color,
+                    )
+                end
                 cumulative = upper
             end
         elseif stack && nofill
@@ -194,8 +218,11 @@ function _dataframe_plots_internal(
             CairoMakie.ylims!(plot.axis, ylims_tuple...)
         end
 
-        # Set x-axis ticks
-        plot.axis.xticks = [time_range[1], last(time_range)]
+        # Set x-axis ticks to show start and end times
+        # CairoMakie expects tuple of (positions, labels)
+        tick_positions = [time_range[1], last(time_range)]
+        tick_labels = string.(tick_positions)
+        plot.axis.xticks = (tick_positions, tick_labels)
     end
 
     # Update series count
