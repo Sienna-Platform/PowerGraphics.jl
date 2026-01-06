@@ -1,17 +1,27 @@
-# TODO: CB this line supresses the plotlyjs outputs, but can't be included since we don't have a PlotlyJS dependency
-#Base.show(io::IO, mm::MIME"text/plain", p::Plots.PlotlyJS.Plot) = show(io, mm, "PlotlyJS Plot with $(length(p.data)) traces")
+# PlotlyJS backend implementation
+# Note: PlotlyJS must be loaded before using this backend (using PlotlyJS)
 
-function _empty_plot(backend::Plots.PlotlyJSBackend)
-    return Plots.PlotlyJS.Plot()
+function _get_plotlyjs()
+    if !isdefined(Main, :PlotlyJS)
+        error("PlotlyJS must be loaded to use PlotlyJSBackend. Run: using PlotlyJS")
+    end
+    return Main.PlotlyJS
+end
+
+function _empty_plot(backend::PlotlyJSBackend)
+    PJS = _get_plotlyjs()
+    return PJS.Plot()
 end
 
 function _dataframe_plots_internal(
     plot,
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::Plots.PlotlyJSBackend;
+    backend::PlotlyJSBackend;
     kwargs...,
 )
+    PJS = _get_plotlyjs()
+
     names = DataFrames.names(PA.no_datetime(variable))
     traces = plot.data
     plot_length = length(traces)
@@ -34,7 +44,7 @@ function _dataframe_plots_internal(
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
-    isnothing(plot) && _empty_plot()
+    isnothing(plot) && _empty_plot(backend)
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
@@ -91,20 +101,20 @@ function _dataframe_plots_internal(
         end
         plot_kwargs[:line_color] = seriescolor[ix]
         plot_kwargs[:name] = names[ix]
-        trace = Plots.PlotlyJS.scatter(; y = plot_data[:, ix], plot_kwargs...)
+        trace = PJS.scatter(; y = plot_data[:, ix], plot_kwargs...)
         push!(traces, trace)
     end
     layout_kwargs = Dict{Symbol, Any}()
     layout_kwargs[:yaxis] =
-        Plots.PlotlyJS.attr(; showticklabels = true, rangemode = "tozero", title = y_label)
+        PJS.attr(; showticklabels = true, rangemode = "tozero", title = y_label)
     layout_kwargs[:xaxis] =
-        Plots.PlotlyJS.attr(; showticklabels = !bar, title = "$time_interval")
+        PJS.attr(; showticklabels = !bar, title = "$time_interval")
     layout_kwargs[:title] = "$title"
     layout_kwargs[:barmode] = stack ? "relative" : "group"
     merge!(layout_kwargs, kwargs)
-    Plots.PlotlyJS.relayout!(plot, Plots.PlotlyJS.Layout(; layout_kwargs...))
+    PJS.relayout!(plot, PJS.Layout(; layout_kwargs...))
 
-    get(kwargs, :set_display, true) && display(Plots.PlotlyJS.plot(plot))
+    get(kwargs, :set_display, true) && display(PJS.plot(plot))
     if !isnothing(save_fig)
         title = title == " " ? "dataframe" : title
         format = get(kwargs, :format, "png")
@@ -113,7 +123,9 @@ function _dataframe_plots_internal(
     return plot
 end
 
-function save_plot(plot, filename::String, backend::Plots.PlotlyJSBackend; kwargs...) # this needs to be typed but Plots.PlotlyJS.Plot doesn't exist until PlotlyJS is loaded
+function save_plot(plot, filename::String, backend::PlotlyJSBackend; kwargs...)
+    PJS = _get_plotlyjs()
+
     save_kwargs = Dict{Symbol, Any}((
         (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
     ))
@@ -123,7 +135,7 @@ function save_plot(plot, filename::String, backend::Plots.PlotlyJSBackend; kwarg
             show(io, MIME("text/html"), plot; save_kwargs...)
         end
     else
-        Plots.PlotlyJS.savefig(plot, filename; save_kwargs...)
+        PJS.savefig(plot, filename; save_kwargs...)
     end
     return filename
 end

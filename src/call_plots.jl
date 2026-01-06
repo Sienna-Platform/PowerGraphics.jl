@@ -1,6 +1,5 @@
 function _empty_plot()
-    backend = Plots.backend()
-    return _empty_plot(backend)
+    return _empty_plot(backend())
 end
 
 function popkwargs(kwargs, kwarg)
@@ -101,7 +100,7 @@ Plots the demand in the system.
 - `palette` : color palette from [`load_palette`](@ref)
 """
 function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
-    backend = Plots.backend()
+    curr_backend = backend()
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
@@ -134,15 +133,18 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     )
 
     if set_display
-        if backend == Plots.PlotlyJSBackend()
-            display(Plots.PlotlyJS.plot(p))
+        if curr_backend isa PlotlyJSBackend
+            PJS = _get_plotlyjs()
+            display(PJS.plot(p))
+        elseif curr_backend isa CairoMakieBackend
+            display(p.figure)
         else
             display(p)
         end
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
-        save_plot(p, joinpath(save_fig, "$(title).png"), backend; kwargs...)
+        save_plot(p, joinpath(save_fig, "$(title).png"), curr_backend; kwargs...)
     end
     return p
 end
@@ -232,8 +234,7 @@ function plot_dataframe!(
 )
     time_range =
         typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    backend = Plots.backend()
-    p = _dataframe_plots_internal(p, variable, time_range, backend; kwargs...)
+    p = _dataframe_plots_internal(p, variable, time_range, backend(); kwargs...)
     return p
 end
 
@@ -291,7 +292,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `stair::Bool`: Make a stair plot instead of a stack plot
 """
 function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
-    backend = Plots.backend()
+    curr_backend = backend()
     title = get(kwargs, :title, "")
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
@@ -309,8 +310,11 @@ function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
     p = plot_dataframe!(p, data, powerdata.time; set_display = false, kwargs...)
 
     if set_display
-        if backend == Plots.PlotlyJSBackend()
-            display(Plots.PlotlyJS.plot(p))
+        if curr_backend isa PlotlyJSBackend
+            PJS = _get_plotlyjs()
+            display(PJS.plot(p))
+        elseif curr_backend isa CairoMakieBackend
+            display(p.figure)
         else
             display(p)
         end
@@ -318,7 +322,7 @@ function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), curr_backend; kwargs...)
     end
     return p
 end
@@ -450,7 +454,7 @@ and assigns each fuel type a specific color.
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
 function plot_fuel!(p, result::IS.Results; kwargs...)
-    backend = Plots.backend()
+    curr_backend = backend()
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     curtailment = get(kwargs, :curtailment, true)
@@ -484,7 +488,7 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
     seriescolor =
-        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, backend; palette = palette))
+        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, curr_backend; palette = palette))
     p = plot_dataframe!(
         p,
         fuel_agg,
@@ -522,8 +526,11 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     # TODO: how to display this?
 
     if set_display
-        if backend == Plots.PlotlyJSBackend()
-            display(Plots.PlotlyJS.plot(p))
+        if curr_backend isa PlotlyJSBackend
+            PJS = _get_plotlyjs()
+            display(PJS.plot(p))
+        elseif curr_backend isa CairoMakieBackend
+            display(p.figure)
         else
             display(p)
         end
@@ -531,7 +538,7 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), curr_backend; kwargs...)
     end
     return p
 end
@@ -559,7 +566,6 @@ save_plot(plot, "my_plot.png")
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
 """
-function save_plot(plot, filename::String; kwargs...) # this needs to be typed but Plots.PlotlyJS.Plot doesn't exist until PlotlyJS is loaded
-    backend = Plots.backend()
-    return save_plot(plot, filename, backend; kwargs...)
+function save_plot(plot, filename::String; kwargs...)
+    return save_plot(plot, filename, backend(); kwargs...)
 end

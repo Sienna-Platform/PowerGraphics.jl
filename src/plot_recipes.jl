@@ -1,3 +1,12 @@
+# CairoMakie backend implementation
+
+# Wrapper for CairoMakie plots to track series and support multiple plot calls
+mutable struct CairoMakiePlot
+    figure::CairoMakie.Figure
+    axis::CairoMakie.Axis
+    series_count::Int
+end
+
 function set_seriescolor(seriescolor::Array, vars::Array)
     color_length = length(seriescolor)
     var_length = length(vars)
@@ -6,107 +15,207 @@ function set_seriescolor(seriescolor::Array, vars::Array)
     return colors
 end
 
-function _empty_plot(backend)
-    return Plots.plot()
+function _empty_plot(backend::CairoMakieBackend)
+    fig = CairoMakie.Figure()
+    ax = CairoMakie.Axis(fig[1, 1])
+    return CairoMakiePlot(fig, ax, 0)
+end
+
+function _get_ylims(plot::CairoMakiePlot, plot_data)
+    maxnan(a) = maximum(x -> isnan(x) ? -Inf : x, a)
+    minnan(a) = minimum(x -> isnan(x) ? Inf : x, a)
+
+    series_min, series_max = minnan(plot_data), maxnan(plot_data)
+
+    # Get existing limits from axis if there are already series
+    if plot.series_count > 0
+        existing_limits = CairoMakie.ylims(plot.axis)
+        series_min = min(existing_limits[1], series_min)
+        series_max = max(existing_limits[2], series_max)
+    end
+
+    ymin = series_min <= 0.0 ? nothing : 0.0
+    ymax = series_max >= 0.0 ? nothing : 0.0
+
+    return (ymin, ymax)
 end
 
 function _dataframe_plots_internal(
-    plot::Union{Plots.Plot, Nothing},
+    plot::Union{CairoMakiePlot, Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend;
+    backend::CairoMakieBackend;
     kwargs...,
 )
-    existing_colors = ones(length(plot.series_list))
-    seriescolor = permutedims(
-        set_seriescolor(
-            get(kwargs, :seriescolor, get_palette_gr(get(kwargs, :palette, PALETTE))),
-            vcat(existing_colors, DataFrames.names(variable)),
-        )[(length(existing_colors) + 1):end],
-    )
-
+    # Get plot kwargs
     save_fig = get(kwargs, :save, nothing)
     title = get(kwargs, :title, " ")
     bar = get(kwargs, :bar, false)
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
+    stair = get(kwargs, :stair, false)
 
     time_interval =
         IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
-    isnothing(plot) && _empty_plot()
-    plot_kwargs =
-        Dict{Symbol, Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_EXTRA_PLOT_KWARGS))
+    if isnothing(plot)
+        plot = _empty_plot(backend)
+    end
+
+    # Get colors
+    existing_series = plot.series_count
+    seriescolor = set_seriescolor(
+        get(kwargs, :seriescolor, get_palette_cairomakie(get(kwargs, :palette, PALETTE))),
+        vcat(ones(existing_series), DataFrames.names(variable)),
+    )[(existing_series + 1):end]
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
-        p = Plots.plot!()
-    else
-        data = Matrix(PA.no_datetime(variable))
-        labels = DataFrames.names(PA.no_datetime(variable))
-        if stack
-            plot_data = cumsum(data; dims = 2)
-            if !nofill
-                plot_kwargs[:fillrange] = hcat(zeros(length(time_range)), plot_data)
-            end
-        else
-            plot_data = data
-        end
-
-        plot_kwargs[:seriescolor] = seriescolor
-        plot_kwargs[:title] = title
-
-        maxnan(a) = maximum(x -> isnan(x) ? -Inf : x, a)
-        minnan(a) = minimum(x -> isnan(x) ? Inf : x, a)
-
-        series_min, series_max = minnan(plot_data), maxnan(plot_data)
-        for s in plot.series_list
-            series_min = min(minnan(s[:y]), series_min)
-            series_max = max(maxnan(s[:y]), series_max)
-        end
-        ymin = series_min <= 0.0 ? -Inf : 0.0
-        ymax = series_max >= 0.0 ? Inf : 0.0
-
-        plot_kwargs[:ylims] = get(kwargs, :ylims, (ymin, ymax))
-        plot_kwargs[:ylabel] = get(kwargs, :y_label, "")
-        plot_kwargs[:xlabel] = "$time_interval"
-        plot_kwargs[:grid] = false
-
-        if bar
-            plot_data = sum(plot_data; dims = 1) ./ interval
-            if stack
-                x = nothing
-                plot_data = plot_data[end:-1:1, end:-1:1]
-                plot_kwargs[:lab] = hcat(string.(labels)...)[end:-1:1, end:-1:1]
-                plot_kwargs[:seriescolor] = seriescolor[:, length(labels):-1:1]
-                plot_kwargs[:legend] = :outerright
-            else
-                x = labels
-                plot_data = permutedims(plot_data)
-                plot_kwargs[:lab] = hcat(string.(labels)...)
-                plot_kwargs[:seriescolor] = seriescolor[:, length(labels):-1:1]
-                plot_kwargs[:legend] = false
-            end
-            plot_func = nofill ? Plots.hline! : Plots.bar!
-            p = plot_func(x, plot_data; plot_kwargs...)
-        else
-            plot_kwargs[:lab] = hcat(string.(labels)...)
-            plot_kwargs[:linetype] = get(kwargs, :stair, false) ? :steppost : :line
-            plot_kwargs[:xtick] = [time_range[1], last(time_range)]
-            plot_kwargs[:legend] = :outerright
-
-            p = Plots.plot!(time_range, plot_data; plot_kwargs...)
-        end
+        return plot
     end
-    get(kwargs, :set_display, false) && display(p)
+
+    data = Matrix(PA.no_datetime(variable))
+    labels = DataFrames.names(PA.no_datetime(variable))
+
+    # Set axis properties
+    plot.axis.xlabel = "$time_interval"
+    plot.axis.ylabel = get(kwargs, :y_label, "")
+    plot.axis.title = title
+
+    if bar
+        # Bar plot
+        plot_data = sum(data; dims = 1) ./ interval
+
+        if stack
+            # Stacked bar plot
+            x_pos = 1
+            cumulative = 0.0
+            for (ix, label) in enumerate(reverse(labels))
+                val = plot_data[end - ix + 1]
+                color = seriescolor[end - ix + 1]
+                CairoMakie.barplot!(
+                    plot.axis,
+                    [x_pos],
+                    [val];
+                    color = color,
+                    offset = cumulative,
+                    label = string(label),
+                )
+                cumulative += val
+            end
+        else
+            # Grouped bar plot
+            x_positions = 1:length(labels)
+            for (ix, label) in enumerate(labels)
+                color = seriescolor[ix]
+                CairoMakie.barplot!(
+                    plot.axis,
+                    [x_positions[ix]],
+                    [plot_data[ix]];
+                    color = color,
+                    label = string(label),
+                )
+            end
+            plot.axis.xticks = (x_positions, string.(labels))
+        end
+        plot.axis.xgridvisible = false
+    else
+        # Line plot
+        if stack && !nofill
+            # Stacked area plot
+            cumulative = zeros(length(time_range))
+            for ix in 1:length(labels)
+                upper = cumulative .+ data[:, ix]
+                color = seriescolor[ix]
+                CairoMakie.band!(
+                    plot.axis,
+                    time_range,
+                    cumulative,
+                    upper;
+                    color = (color, 0.5),
+                    label = string(labels[ix]),
+                )
+                # Add line on top
+                CairoMakie.lines!(
+                    plot.axis,
+                    time_range,
+                    upper;
+                    color = color,
+                    linestyle = stair ? :steppost : :solid,
+                )
+                cumulative = upper
+            end
+        elseif stack && nofill
+            # Stacked lines without fill
+            cumulative = zeros(length(time_range))
+            for ix in 1:length(labels)
+                cumulative .+= data[:, ix]
+                color = seriescolor[ix]
+                if stair
+                    CairoMakie.stairs!(
+                        plot.axis,
+                        time_range,
+                        cumulative;
+                        color = color,
+                        label = string(labels[ix]),
+                        step = :post,
+                    )
+                else
+                    CairoMakie.lines!(
+                        plot.axis,
+                        time_range,
+                        cumulative;
+                        color = color,
+                        label = string(labels[ix]),
+                    )
+                end
+            end
+        else
+            # Regular line plot (no stacking)
+            for ix in 1:length(labels)
+                color = seriescolor[ix]
+                plot_func = stair ? CairoMakie.stairs! : CairoMakie.lines!
+                plot_kwargs = Dict(:color => color, :label => string(labels[ix]))
+                if stair
+                    plot_kwargs[:step] = :post
+                end
+                plot_func(plot.axis, time_range, data[:, ix]; plot_kwargs...)
+            end
+        end
+
+        # Set y-axis limits
+        ylims_tuple = get(kwargs, :ylims, _get_ylims(plot, data))
+        if !isnothing(ylims_tuple[1]) || !isnothing(ylims_tuple[2])
+            CairoMakie.ylims!(plot.axis, ylims_tuple...)
+        end
+
+        # Set x-axis ticks
+        plot.axis.xticks = [time_range[1], last(time_range)]
+    end
+
+    # Update series count
+    plot.series_count += length(labels)
+
+    # Add legend if there are multiple series
+    if plot.series_count > 0
+        CairoMakie.axislegend(plot.axis; position = :rt)
+    end
+
+    # Display if requested
+    get(kwargs, :set_display, false) && display(plot.figure)
+
+    # Save if requested
     title = title == " " ? "dataframe" : title
     !isnothing(save_fig) &&
-        save_plot(p, joinpath(save_fig, "$(title).png"), backend; kwargs...)
-    return p
+        save_plot(plot, joinpath(save_fig, "$(title).png"), backend; kwargs...)
+
+    return plot
 end
 
-function save_plot(plot::Plots.Plot, filename::String, backend; kwargs...)
-    Plots.savefig(plot, filename) # TODO: add kwargs support
+function save_plot(plot::CairoMakiePlot, filename::String, backend::CairoMakieBackend; kwargs...)
+    CairoMakie.save(filename, plot.figure)
+    @info "saved plot" filename
+    return filename
 end

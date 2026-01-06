@@ -22,17 +22,17 @@ report(results, out_path, template)
 
 # Accepted Key Words
 - `doctype::String = "md2html"`: create an HTML, default is PDF via latex
-- `backend::Plots.AbstractBackend = Plots.gr()`: sets the `Plots.jl` [backend](@extref Plots backends)
+- `backend::PlottingBackend = CairoMakieBackend()`: sets the plotting backend (CairoMakieBackend or PlotlyJSBackend)
 """
 function report(res::IS.Results, out_path::String, design_template::String; kwargs...)
     doctype = get(kwargs, :doctype, "md2pdf")
-    backend = get(kwargs, :backend, Plots.gr())
+    plot_backend = get(kwargs, :backend, CairoMakieBackend())
     initial_time = get(kwargs, :initial_time, nothing)
     len = get(kwargs, :horizon, nothing)
 
     !isfile(design_template) &&
         throw(ArgumentError("The provided template file is invalid"))
-    args = Dict("results" => res, "backend" => backend)
+    args = Dict("results" => res, "backend" => plot_backend)
     Weave.weave(
         design_template;
         out_path = out_path,
