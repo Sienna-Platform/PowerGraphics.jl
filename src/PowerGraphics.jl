@@ -3,20 +3,18 @@ isdefined(Base, :__precompile__) && __precompile__()
 module PowerGraphics
 
 export load_palette
-export plot_demand
-export plot_dataframe
-export plot_powerdata
-export plot_results
-export plot_fuel
-export plot_demand!
-export plot_dataframe!
-export plot_powerdata!
-export plot_results!
-export plot_fuel!
+export plot_demand, plot_demand_plotly
+export plot_dataframe, plot_dataframe_plotly
+export plot_powerdata, plot_powerdata_plotly
+export plot_results, plot_results_plotly
+export plot_fuel, plot_fuel_plotly
+export plot_demand!, plot_demand_plotly!
+export plot_dataframe!, plot_dataframe_plotly!
+export plot_powerdata!, plot_powerdata_plotly!
+export plot_results!, plot_results_plotly!
+export plot_fuel!, plot_fuel_plotly!
 export report
 export save_plot
-export backend, backend!, cairomakie, plotlyjs
-export CairoMakieBackend, PlotlyJSBackend
 
 #I/O Imports
 import Dates

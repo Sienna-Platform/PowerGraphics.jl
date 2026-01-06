@@ -96,10 +96,6 @@ function get_palette_category(palette)
     getfield.(palette, :category)
 end
 
-function get_palette_seriescolor(palette)
-    return get_palette_seriescolor(backend(), palette)
-end
-
 function get_palette_seriescolor(backend::CairoMakieBackend, palette)
     return get_palette_cairomakie(palette)
 end

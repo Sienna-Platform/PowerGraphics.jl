@@ -1,13 +1,23 @@
 file_path = TEST_OUTPUTS
 
 function test_plots(file_path::String; backend_pkg::String = "cairomakie")
+    # Select plot functions based on backend
     if backend_pkg == "cairomakie"
-        PG.cairomakie()
+        plot_dataframe_fn = plot_dataframe
+        plot_dataframe_fn! = plot_dataframe!
+        plot_demand_fn = plot_demand
+        plot_powerdata_fn = PG.plot_powerdata
+        plot_fuel_fn = plot_fuel
     elseif backend_pkg == "plotlyjs"
-        PG.plotlyjs()
+        plot_dataframe_fn = plot_dataframe_plotly
+        plot_dataframe_fn! = plot_dataframe_plotly!
+        plot_demand_fn = plot_demand_plotly
+        plot_powerdata_fn = PG.plot_powerdata_plotly
+        plot_fuel_fn = plot_fuel_plotly
     else
         throw(error("$backend_pkg backend_pkg not supported"))
     end
+
     set_display = false
     cleanup = true
     @info("running tests with $backend_pkg with display $set_display and cleanup $cleanup")
@@ -27,14 +37,14 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
     @testset "test $backend_pkg plot production" begin
         out_path = joinpath(file_path, backend_pkg * "_plots")
         !isdir(out_path) && mkdir(out_path)
-        plot_dataframe(
+        plot_dataframe_fn(
             gen_uc.data[:ActivePowerVariable__RenewableDispatch],
             gen_uc.time;
             set_display = set_display,
             title = "df_line",
             save = out_path,
         )
-        plot_dataframe(
+        plot_dataframe_fn(
             gen_uc.data[:ActivePowerVariable__ThermalStandard],
             gen_uc.time;
             set_display = set_display,
@@ -42,7 +52,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             save = out_path,
             stack = true,
         )
-        plot_dataframe(
+        plot_dataframe_fn(
             gen_uc.data[:ActivePowerVariable__ThermalStandard],
             gen_uc.time;
             set_display = set_display,
@@ -50,7 +60,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             save = out_path,
             stair = true,
         )
-        plot_dataframe(
+        plot_dataframe_fn(
             gen_uc.data[:ActivePowerVariable__ThermalStandard],
             gen_uc.time;
             set_display = set_display,
@@ -58,7 +68,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             save = out_path,
             bar = true,
         )
-        plot_dataframe(
+        plot_dataframe_fn(
             gen_uc.data[:ActivePowerVariable__ThermalStandard],
             gen_uc.time;
             set_display = set_display,
@@ -67,8 +77,8 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = true,
             stack = true,
         )
-        plot_dataframe!(
-            plot_dataframe(
+        plot_dataframe_fn!(
+            plot_dataframe_fn(
                 gen_uc.data[:ActivePowerVariable__ThermalStandard],
                 gen_uc.time;
                 set_display = set_display,
@@ -103,7 +113,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         out_path = joinpath(file_path, backend_pkg * "_powerdata_plots")
         !isdir(out_path) && mkdir(out_path)
 
-        PG.plot_powerdata(
+        plot_powerdata_fn(
             gen_uc;
             set_display = set_display,
             title = "pg_data",
@@ -111,7 +121,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = false,
             stack = false,
         )
-        PG.plot_powerdata(
+        plot_powerdata_fn(
             gen_uc;
             set_display = set_display,
             title = "pg_data_stack",
@@ -119,7 +129,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = false,
             stack = true,
         )
-        PG.plot_powerdata(
+        plot_powerdata_fn(
             gen_uc;
             set_display = set_display,
             title = "pg_data_bar",
@@ -127,7 +137,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = true,
             stack = false,
         )
-        PG.plot_powerdata(
+        plot_powerdata_fn(
             gen_uc;
             set_display = set_display,
             title = "pg_data_bar_stack",
@@ -151,7 +161,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
     @testset "test $backend_pkg demand plot production" begin
         out_path = joinpath(file_path, backend_pkg * "_demand_plots")
         !isdir(out_path) && mkdir(out_path)
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand",
@@ -161,7 +171,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             nofill = false,
             filter_func = x -> get_name(get_bus(x)) == "bus2",
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_stack",
@@ -170,7 +180,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = true,
             nofill = false,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_bar",
@@ -179,7 +189,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = false,
             nofill = false,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_bar_stack",
@@ -188,7 +198,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = true,
             nofill = false,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_nofill",
@@ -197,7 +207,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = false,
             nofill = true,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_nofill_stack",
@@ -206,7 +216,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = true,
             nofill = true,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_nofill_bar",
@@ -215,7 +225,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = false,
             nofill = true,
         )
-        PG.plot_demand(
+        plot_demand_fn(
             results_uc;
             set_display = set_display,
             title = "demand_nofill_bar_stack",
@@ -225,7 +235,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             nofill = true,
         )
 
-        p = PG.plot_demand(
+        p = plot_demand_fn(
             results_uc.system;
             set_display = set_display,
             title = "sysdemand",
@@ -235,7 +245,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
         @test plot_length == 1
 
-        p = PG.plot_demand(
+        p = plot_demand_fn(
             results_uc.system;
             set_display = set_display,
             title = "sysdemand_bus",
@@ -271,7 +281,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         out_path = joinpath(file_path, backend_pkg * "_fuel_plots")
         !isdir(out_path) && mkdir(out_path)
 
-        PG.plot_fuel(
+        plot_fuel_fn(
             results_uc;
             set_display = set_display,
             title = "fuel",
@@ -280,7 +290,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             stack = false,
             filter_func = x -> get_name(get_area(get_bus(x))) == "1",
         )
-        PG.plot_fuel(
+        plot_fuel_fn(
             results_uc;
             set_display = set_display,
             title = "fuel_stack",
@@ -288,7 +298,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = false,
             stack = true,
         )
-        PG.plot_fuel(
+        plot_fuel_fn(
             results_uc;
             set_display = set_display,
             title = "fuel_bar",
@@ -296,7 +306,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             bar = true,
             stack = false,
         )
-        PG.plot_fuel(
+        plot_fuel_fn(
             results_uc;
             set_display = set_display,
             title = "fuel_bar_stack",
@@ -324,7 +334,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
 
         palette = PG.load_palette(joinpath(TEST_DIR, "test_yamls/color-palette.yaml"))
 
-        PG.plot_fuel(
+        plot_fuel_fn(
             results_uc;
             set_display = set_display,
             title = "fuel",
@@ -346,7 +356,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
     end
 
     @testset "test html saving" begin
-        plot_fuel(
+        plot_fuel_fn(
             results_ed;
             set_display = false,
             save = TEST_RESULT_DIR,
@@ -357,8 +367,8 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
     end
 end
 try
-    test_plots(file_path; backend_pkg = "gr")
-    @info("done with GR, starting plotlyjs")
+    test_plots(file_path; backend_pkg = "cairomakie")
+    @info("done with CairoMakie, starting plotlyjs")
     test_plots(file_path; backend_pkg = "plotlyjs")
 finally
     nothing
