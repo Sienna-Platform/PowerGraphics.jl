@@ -46,7 +46,7 @@ function __init__()
         "make_report.jl",
     )
     Requires.@require PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a" begin
-        @info "PlotlyJS backend loaded. Use plotlyjs() to switch to it."
+        @info "PlotlyJS loaded. Use plot_*_plotly() functions for interactive plots."
     end
 end
 
