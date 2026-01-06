@@ -355,15 +355,18 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         cleanup && rm(out_path; recursive = true)
     end
 
-    @testset "test html saving" begin
-        plot_fuel_fn(
-            results_ed;
-            set_display = false,
-            save = TEST_RESULT_DIR,
-            title = "fuel_html_output",
-            format = "html",
-        )
-        @test isfile(joinpath(TEST_RESULT_DIR, "fuel_html_output.html"))
+    # HTML saving only works with PlotlyJS backend
+    if backend_pkg == "plotlyjs"
+        @testset "test html saving" begin
+            plot_fuel_fn(
+                results_ed;
+                set_display = false,
+                save = TEST_RESULT_DIR,
+                title = "fuel_html_output",
+                format = "html",
+            )
+            @test isfile(joinpath(TEST_RESULT_DIR, "fuel_html_output.html"))
+        end
     end
 end
 try
