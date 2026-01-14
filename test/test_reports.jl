@@ -3,8 +3,8 @@ file_path = TEST_OUTPUTS
 function test_reports(file_path::String; backend_pkg::String = "gr")
     if backend_pkg == "gr"
         backend = Plots.gr()
-    elseif backend_pkg == "plotlyjs"
-        backend = Plots.plotlyjs()
+    elseif backend_pkg == "plotlylight"
+        backend = Plots.plotlylight()
     else
         throw(error("$backend_pkg backend_pkg not supported"))
     end
@@ -32,7 +32,7 @@ end
 
 try
     test_reports(file_path; backend_pkg = "gr")
-    test_reports(file_path; backend_pkg = "plotlyjs")
+    test_reports(file_path; backend_pkg = "plotlylight")
 finally
     nothing
 end

@@ -8,7 +8,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         plot_demand_fn = plot_demand
         plot_powerdata_fn = PG.plot_powerdata
         plot_fuel_fn = plot_fuel
-    elseif backend_pkg == "plotlyjs"
+    elseif backend_pkg == "plotlylight"
         plot_dataframe_fn = plot_dataframe_plotly
         plot_dataframe_fn! = plot_dataframe_plotly!
         plot_demand_fn = plot_demand_plotly
@@ -355,8 +355,8 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         cleanup && rm(out_path; recursive = true)
     end
 
-    # HTML saving only works with PlotlyJS backend
-    if backend_pkg == "plotlyjs"
+    # HTML saving only works with PlotlyLight backend
+    if backend_pkg == "plotlylight"
         @testset "test html saving" begin
             plot_fuel_fn(
                 results_ed;
@@ -371,8 +371,8 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
 end
 try
     test_plots(file_path; backend_pkg = "cairomakie")
-    @info("done with CairoMakie, starting plotlyjs")
-    test_plots(file_path; backend_pkg = "plotlyjs")
+    @info("done with CairoMakie, starting plotlylight")
+    test_plots(file_path; backend_pkg = "plotlylight")
 finally
     nothing
 end

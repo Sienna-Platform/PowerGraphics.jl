@@ -1,30 +1,19 @@
-# PlotlyJS backend implementation
-# Note: PlotlyJS must be loaded before using this backend (using PlotlyJS)
+# PlotlyLight backend implementation
 
-function _get_plotlyjs()
-    if !isdefined(Main, :PlotlyJS)
-        error("PlotlyJS must be loaded to use PlotlyJSBackend. Run: using PlotlyJS")
-    end
-    return Main.PlotlyJS
-end
-
-function _empty_plot(backend::PlotlyJSBackend)
-    PJS = _get_plotlyjs()
-    return PJS.Plot()
+function _empty_plot(backend::PlotlyLightBackend)
+    # Create an empty plot using PlotlyLight
+    return PlotlyLight.Plot()
 end
 
 function _dataframe_plots_internal(
     plot,
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::PlotlyJSBackend;
+    backend::PlotlyLightBackend;
     kwargs...,
 )
-    PJS = _get_plotlyjs()
-
     names = DataFrames.names(PA.no_datetime(variable))
-    traces = plot.data
-    plot_length = length(traces)
+    plot_length = length(plot.data)
     seriescolor = permutedims(
         set_seriescolor(
             get(kwargs, :seriescolor, get_palette_plotly(get(kwargs, :palette, PALETTE))),
@@ -53,68 +42,110 @@ function _dataframe_plots_internal(
         plot_data = Matrix(PA.no_datetime(variable))
     end
 
-    plot_kwargs = Dict()
+    plot_type = bar ? "bar" : "scatter"
+    line_shape = get(kwargs, :stair, false) ? "hv" : "linear"
+    line_dash = get(kwargs, :line_dash, "solid")
+
     if bar
         plot_data = sum(plot_data; dims = 1) ./ interval
-        showtxicklabels = false
         if nofill
-            plot_kwargs[:type] = "scatter"
+            # Line plot for bar with nofill
             plot_data = [plot_data; plot_data]
-            plot_kwargs[:x] = [-0.5, 0.5]
+            x_data = [-0.5, 0.5]
+            for ix in 1:length(names)
+                y_data = plot_data[:, ix]
+                sign_group = sum(y_data) >= 0 ? 0 : 10
+
+                trace_config = PlotlyLight.Config(
+                    type = "scatter",
+                    x = x_data,
+                    y = y_data,
+                    mode = "lines",
+                    name = names[ix],
+                    line = PlotlyLight.Config(
+                        color = seriescolor[ix],
+                        dash = line_dash,
+                        shape = line_shape,
+                    ),
+                    showlegend = true,
+                )
+
+                if stack
+                    trace_config.stackgroup = string(plot_length + 1 + sign_group)
+                    trace_config.fillcolor = "transparent"
+                end
+
+                plot(trace_config)
+            end
         else
-            plot_kwargs[:type] = "bar"
-            plot_kwargs[:fill] = "tonexty"
+            # Regular bar plot
+            for ix in 1:length(names)
+                y_data = vec(plot_data[:, ix])
+                sign_group = sum(y_data) >= 0 ? 0 : 10
+
+                trace_config = PlotlyLight.Config(
+                    type = "bar",
+                    y = y_data,
+                    marker = PlotlyLight.Config(color = seriescolor[ix]),
+                    name = names[ix],
+                    showlegend = true,
+                )
+
+                if stack
+                    trace_config.stackgroup = string(plot_length + 1 + sign_group)
+                    trace_config.fillcolor = seriescolor[ix]
+                end
+
+                plot(trace_config)
+            end
         end
     else
-        if !nofill && stack
-            plot_kwargs[:fill] = "tonexty"
-        end
-        plot_kwargs[:plot_type] = "scatter"
-        plot_kwargs[:x] = time_range
-    end
+        # Scatter plot
+        for ix in 1:length(names)
+            data_to_plot = plot_data[:, ix]
+            sign_group = sum(data_to_plot) >= 0 ? 0 : 10
 
-    plot_kwargs[:line_shape] = get(kwargs, :stair, false) ? "hv" : "linear"
-    plot_kwargs[:mode] = "lines"
-    plot_kwargs[:line_dash] = get(kwargs, :line_dash, "solid")
-    plot_kwargs[:showlegend] = true
+            trace_config = PlotlyLight.Config(
+                type = "scatter",
+                x = time_range,
+                y = data_to_plot,
+                mode = "lines",
+                name = names[ix],
+                line = PlotlyLight.Config(
+                    color = seriescolor[ix],
+                    dash = line_dash,
+                    shape = line_shape,
+                ),
+                showlegend = true,
+            )
 
-    for ix in 1:length(names)
-        if bar
-            plot_kwargs[:marker_color] = seriescolor[ix]
-        end
-        data_to_plot = plot_data[:, ix]
-        if sum(data_to_plot) >= 0
-            sign_group = 0
-        else
-            sign_group = 10
-        end
-
-        if stack
-            plot_kwargs[:stackgroup] = string(plot_length + 1 + sign_group)
-            if nofill
-                plot_kwargs[:fillcolor] = "transparent"
-            else
-                plot_kwargs[:fillcolor] = seriescolor[ix]
+            if stack
+                trace_config.stackgroup = string(plot_length + 1 + sign_group)
+                if nofill
+                    trace_config.fillcolor = "transparent"
+                else
+                    trace_config.fill = "tonexty"
+                    trace_config.fillcolor = seriescolor[ix]
+                end
+            elseif !nofill
+                trace_config.stackgroup = string(ix + plot_length)
+                trace_config.fill = "tonexty"
             end
-        elseif !nofill
-            plot_kwargs[:stackgroup] = string(ix + plot_length)
-        end
-        plot_kwargs[:line_color] = seriescolor[ix]
-        plot_kwargs[:name] = names[ix]
-        trace = PJS.scatter(; y = plot_data[:, ix], plot_kwargs...)
-        push!(traces, trace)
-    end
-    layout_kwargs = Dict{Symbol, Any}()
-    layout_kwargs[:yaxis] =
-        PJS.attr(; showticklabels = true, rangemode = "tozero", title = y_label)
-    layout_kwargs[:xaxis] =
-        PJS.attr(; showticklabels = !bar, title = "$time_interval")
-    layout_kwargs[:title] = "$title"
-    layout_kwargs[:barmode] = stack ? "relative" : "group"
-    merge!(layout_kwargs, kwargs)
-    PJS.relayout!(plot, PJS.Layout(; layout_kwargs...))
 
-    get(kwargs, :set_display, true) && display(PJS.plot(plot))
+            plot(trace_config)
+        end
+    end
+
+    # Update layout
+    plot.layout.yaxis.showticklabels = true
+    plot.layout.yaxis.rangemode = "tozero"
+    plot.layout.yaxis.title.text = y_label
+    plot.layout.xaxis.showticklabels = !bar
+    plot.layout.xaxis.title.text = string(time_interval)
+    plot.layout.title.text = title
+    plot.layout.barmode = stack ? "relative" : "group"
+
+    get(kwargs, :set_display, true) && display(plot)
     if !isnothing(save_fig)
         title = title == " " ? "dataframe" : title
         format = get(kwargs, :format, "png")
@@ -123,9 +154,7 @@ function _dataframe_plots_internal(
     return plot
 end
 
-function save_plot(plot, filename::String, backend::PlotlyJSBackend; kwargs...)
-    PJS = _get_plotlyjs()
-
+function save_plot(plot, filename::String, backend::PlotlyLightBackend; kwargs...)
     save_kwargs = Dict{Symbol, Any}((
         (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
     ))
@@ -135,7 +164,14 @@ function save_plot(plot, filename::String, backend::PlotlyJSBackend; kwargs...)
             show(io, MIME("text/html"), plot; save_kwargs...)
         end
     else
-        PJS.savefig(plot, filename; save_kwargs...)
+        # PlotlyLight doesn't have built-in image export
+        # Users need to save HTML and convert externally, or use PlotlyBase.jl
+        @warn "PlotlyLight only supports HTML export. Saving as HTML instead." filename
+        html_filename = replace(filename, r"\.[^.]+$" => ".html")
+        open(html_filename, "w") do io
+            show(io, MIME("text/html"), plot; save_kwargs...)
+        end
+        return html_filename
     end
     return filename
 end

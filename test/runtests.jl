@@ -9,7 +9,7 @@ import InfrastructureSystems: Deterministic, Probabilistic, Scenarios, Forecast
 using PowerSystems
 using PowerGraphics
 using PowerAnalytics
-using PlotlyJS
+using PlotlyLight
 using PowerSimulations
 using StorageSystemsSimulations
 using HiGHS

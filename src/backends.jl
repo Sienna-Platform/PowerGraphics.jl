@@ -1,7 +1,7 @@
 # Backend system for PowerGraphics.jl
-# Supports CairoMakie (default) and PlotlyJS (optional)
+# Supports CairoMakie (default) and PlotlyLight (optional)
 
 abstract type PlottingBackend end
 
 struct CairoMakieBackend <: PlottingBackend end
-struct PlotlyJSBackend <: PlottingBackend end
+struct PlotlyLightBackend <: PlottingBackend end

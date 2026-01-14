@@ -22,7 +22,7 @@ report(results, out_path, template)
 
 # Accepted Key Words
 - `doctype::String = "md2html"`: create an HTML, default is PDF via latex
-- `backend::PlottingBackend = CairoMakieBackend()`: sets the plotting backend (CairoMakieBackend or PlotlyJSBackend)
+- `backend::PlottingBackend = CairoMakieBackend()`: sets the plotting backend (CairoMakieBackend or PlotlyLightBackend)
 """
 function report(res::IS.Results, out_path::String, design_template::String; kwargs...)
     doctype = get(kwargs, :doctype, "md2pdf")
