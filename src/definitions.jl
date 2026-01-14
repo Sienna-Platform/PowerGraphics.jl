@@ -100,7 +100,7 @@ function get_palette_seriescolor(backend::CairoMakieBackend, palette)
     return get_palette_cairomakie(palette)
 end
 
-function get_palette_seriescolor(backend::PlotlyJSBackend, palette)
+function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
     return get_palette_plotly(palette)
 end
 
@@ -127,7 +127,7 @@ function match_fuel_colors(data::DataFrames.DataFrame, backend::CairoMakieBacken
     return default
 end
 
-function match_fuel_colors(data::DataFrames.DataFrame, backend::PlotlyJSBackend; palette = PALETTE)
+function match_fuel_colors(data::DataFrames.DataFrame, backend::PlotlyLightBackend; palette = PALETTE)
     color_range = get_palette_plotly_fuel(palette)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)

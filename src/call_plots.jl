@@ -3,7 +3,7 @@ function _empty_plot()
 end
 
 function _empty_plot_plotly()
-    return _empty_plot(PlotlyJSBackend())
+    return _empty_plot(PlotlyLightBackend())
 end
 
 function popkwargs(kwargs, kwarg)
@@ -171,7 +171,7 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
         p,
         load_agg,
         load.time;
-        seriescolor = get(kwargs, :seriescolor, get_palette_seriescolor(PlotlyJSBackend(), palette)),
+        seriescolor = get(kwargs, :seriescolor, get_palette_seriescolor(PlotlyLightBackend(), palette)),
         linestyle = Symbol(linestyle),
         line_dash = string(linestyle),
         linewidth = get(kwargs, :linewidth, 1),
@@ -187,7 +187,7 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
-        save_plot(p, joinpath(save_fig, "$(title).png"), PlotlyJSBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$(title).png"), PlotlyLightBackend(); kwargs...)
     end
     return p
 end
@@ -304,7 +304,7 @@ function plot_dataframe_plotly!(
 )
     time_range =
         typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    p = _dataframe_plots_internal(p, variable, time_range, PlotlyJSBackend(); kwargs...)
+    p = _dataframe_plots_internal(p, variable, time_range, PlotlyLightBackend(); kwargs...)
     return p
 end
 
@@ -417,7 +417,7 @@ function plot_powerdata_plotly!(p, powerdata::PA.PowerData; kwargs...)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyJSBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
     end
     return p
 end
@@ -675,7 +675,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
     seriescolor =
-        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, PlotlyJSBackend(); palette = palette))
+        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette))
     p = plot_dataframe_plotly!(
         p,
         fuel_agg,
@@ -719,7 +719,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyJSBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
     end
     return p
 end
@@ -754,5 +754,5 @@ end
 # For PlotlyJS plots (no specific type, handled generically)
 function save_plot(plot, filename::String; kwargs...)
     # Assume PlotlyJS plot if not CairoMakiePlot
-    return save_plot(plot, filename, PlotlyJSBackend(); kwargs...)
+    return save_plot(plot, filename, PlotlyLightBackend(); kwargs...)
 end

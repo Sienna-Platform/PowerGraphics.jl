@@ -27,11 +27,11 @@ gen = get_generation_data(res)
 plot_powerdata(gen)
 ```
 
-`PowerGraphics.jl` creates figures using a number of optional backends using `Plots.jl`. For interactive figures, it is recommended to use the `PlotlyJS.jl` backend, which requires the `PlotlyJS.jl`:
+`PowerGraphics.jl` creates figures using a number of optional backends using `Plots.jl`. For interactive figures, it is recommended to use the `PlotlyLight.jl` backend, which requires the `PlotlyLight.jl`:
 
 ```julia
 using Pkg
-Pkg.add("PlotlyJS")
+Pkg.add("PlotlyLight")
 ```
 
 When using `PowerGraphics.jl` within a jupyter notebook, `WebIO.jl` is also required:
@@ -40,11 +40,11 @@ When using `PowerGraphics.jl` within a jupyter notebook, `WebIO.jl` is also requ
 Pkg.add("WebIO")
 ```
 
-An additional command (`plotlyjs()`) to startup the `PlotlyJS` backend from `Plots` is required:
+An additional command (`plotlylight()`) to startup the `PlotlyLight` backend from `Plots` is required:
 
 ```julia
 using PowerGraphics
-plotlyjs()
+plotlylight()
 # where "res" is a PowerSimulations.SimulationResults object
 plot_fuel(res)
 ```
