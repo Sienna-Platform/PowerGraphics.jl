@@ -1,10 +1,11 @@
 file_path = TEST_OUTPUTS
 
-function test_reports(file_path::String; backend_pkg::String = "gr")
-    if backend_pkg == "gr"
-        backend = Plots.gr()
+function test_reports(file_path::String; backend_pkg::String = "cairomakie")
+    # Select backend based on backend_pkg
+    if backend_pkg == "cairomakie"
+        backend = PG.CairoMakieBackend()
     elseif backend_pkg == "plotlylight"
-        backend = Plots.plotlylight()
+        backend = PG.PlotlyLightBackend()
     else
         throw(error("$backend_pkg backend_pkg not supported"))
     end
@@ -31,7 +32,7 @@ function test_reports(file_path::String; backend_pkg::String = "gr")
 end
 
 try
-    test_reports(file_path; backend_pkg = "gr")
+    test_reports(file_path; backend_pkg = "cairomakie")
     test_reports(file_path; backend_pkg = "plotlylight")
 finally
     nothing
