@@ -92,13 +92,15 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         )
 
         list = readdir(out_path)
+        # PlotlyLight only supports HTML export, CairoMakie supports PNG
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
         expected_files = [
-            "df_line.png",
-            "df_stack.png",
-            "df_stair.png",
-            "df_bar.png",
-            "df_bar_stack.png",
-            "df_gen_load.png",
+            "df_line$file_ext",
+            "df_stack$file_ext",
+            "df_stair$file_ext",
+            "df_bar$file_ext",
+            "df_bar_stack$file_ext",
+            "df_gen_load$file_ext",
         ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
@@ -147,8 +149,14 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         )
 
         list = readdir(out_path)
-        expected_files =
-            ["pg_data.png", "pg_data_stack.png", "pg_data_bar.png", "pg_data_bar_stack.png"]
+        # PlotlyLight only supports HTML export, CairoMakie supports PNG
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
+        expected_files = [
+            "pg_data$file_ext",
+            "pg_data_stack$file_ext",
+            "pg_data_bar$file_ext",
+            "pg_data_bar_stack$file_ext"
+        ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
         # extra results created
@@ -256,17 +264,19 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         @test plot_length == 3
 
         list = readdir(out_path)
+        # PlotlyLight only supports HTML export, CairoMakie supports PNG
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
         expected_files = [
-            "demand.png",
-            "demand_stack.png",
-            "demand_bar.png",
-            "demand_bar_stack.png",
-            "demand_nofill.png",
-            "demand_nofill_stack.png",
-            "demand_nofill_bar.png",
-            "demand_nofill_bar_stack.png",
-            "sysdemand.png",
-            "sysdemand_bus.png",
+            "demand$file_ext",
+            "demand_stack$file_ext",
+            "demand_bar$file_ext",
+            "demand_bar_stack$file_ext",
+            "demand_nofill$file_ext",
+            "demand_nofill_stack$file_ext",
+            "demand_nofill_bar$file_ext",
+            "demand_nofill_bar_stack$file_ext",
+            "sysdemand$file_ext",
+            "sysdemand_bus$file_ext",
         ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
@@ -316,8 +326,14 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         )
 
         list = readdir(out_path)
-        expected_files =
-            ["fuel.png", "fuel_stack.png", "fuel_bar.png", "fuel_bar_stack.png"]
+        # PlotlyLight only supports HTML export, CairoMakie supports PNG
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
+        expected_files = [
+            "fuel$file_ext",
+            "fuel_stack$file_ext",
+            "fuel_bar$file_ext",
+            "fuel_bar_stack$file_ext"
+        ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
         # extra results created
@@ -347,7 +363,9 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             palette = palette,
         )
         list = readdir(out_path)
-        expected_files = ["fuel.png"]
+        # PlotlyLight only supports HTML export, CairoMakie supports PNG
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
+        expected_files = ["fuel$file_ext"]
         @test isempty(setdiff(expected_files, list))
         @test isempty(setdiff(list, expected_files))
 
