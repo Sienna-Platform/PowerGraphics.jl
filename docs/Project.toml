@@ -1,8 +1,11 @@
 [deps]
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
 DocumenterInterLinks = "d12716ef-a0f6-4df4-a9f1-a5a34e75c656"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 PowerGraphics = "5f7eddb3-86b1-49e8-a95a-ddc0f45eea41"
+PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 
 [compat]
 Documenter = "^1.8"
