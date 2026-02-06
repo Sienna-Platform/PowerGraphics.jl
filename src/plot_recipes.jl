@@ -22,25 +22,6 @@ function _empty_plot(backend::CairoMakieBackend)
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
-function _get_ylims(plot::CairoMakiePlot, plot_data)
-    maxnan(a) = maximum(x -> isnan(x) ? -Inf : x, a)
-    minnan(a) = minimum(x -> isnan(x) ? Inf : x, a)
-
-    series_min, series_max = minnan(plot_data), maxnan(plot_data)
-
-    # Get existing limits from axis if there are already series
-    if plot.series_count > 0
-        existing_limits = CairoMakie.ylims(plot.axis)
-        series_min = min(existing_limits[1], series_min)
-        series_max = max(existing_limits[2], series_max)
-    end
-
-    ymin = series_min <= 0.0 ? nothing : 0.0
-    ymax = series_max >= 0.0 ? nothing : 0.0
-
-    return (ymin, ymax)
-end
-
 function _dataframe_plots_internal(
     plot::Union{CairoMakiePlot, Nothing},
     variable::DataFrames.DataFrame,
@@ -77,6 +58,10 @@ function _dataframe_plots_internal(
         return plot
     end
 
+    # CairoMakie.band doesn't allow for DateTime axes. Every plot now gets
+    # float axes instead so plots can be layered on the same Axis.
+    time_range_float = Dates.datetime2unix.(time_range)
+
     data = Matrix(PA.no_datetime(variable))
     labels = DataFrames.names(PA.no_datetime(variable))
 
@@ -92,21 +77,27 @@ function _dataframe_plots_internal(
         plot_data = sum(data; dims = 1) ./ interval
 
         if stack
-            # Stacked bar plot using CairoMakie's stack parameter
-            # All bars at x=1, with stack groups to create vertical stacking
-            x_data = ones(Int, length(labels))  # All at position 1
-            y_data = vec(plot_data)  # Heights
-            stack_groups = ones(Int, length(labels))  # All in same stack group
-
-            CairoMakie.barplot!(
-                plot.axis,
-                x_data,
-                y_data;
-                stack = stack_groups,
-                color = seriescolor[1:length(labels)],
-                # Note: label parameter doesn't work well with stacked bars in single call
-                # Will add legend entries manually if needed
-            )
+            for (i, label) in enumerate(labels)
+                CairoMakie.barplot!(
+                    plot.axis,
+                    [1],                        # x position
+                    [plot_data[i]],             # height
+                    stack = [1],                # same stack group
+                    color = seriescolor[i],
+                    label = string(label)                 # legend label
+                )
+            end
+            cum = 0
+            for (i, val) in enumerate(plot_data)
+                CairoMakie.text!(
+                    plot.axis,
+                    1,                          # x
+                    cum + val/2,                # center of segment
+                    text = string(val),
+                    align = (:center, :center)
+                )
+                cum += val
+            end
 
             # Set x-axis to show single bar
             plot.axis.xticks = ([1], [""])
@@ -130,7 +121,7 @@ function _dataframe_plots_internal(
         # Line plot
         if stack && !nofill
             # Stacked area plot
-            cumulative = zeros(length(time_range))
+            cumulative = zeros(length(time_range_float))
             for ix in 1:length(labels)
                 upper = cumulative .+ data[:, ix]
                 color = seriescolor[ix]
@@ -140,7 +131,7 @@ function _dataframe_plots_internal(
                     # For stair plots, use stairs with fill
                     CairoMakie.stairs!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         upper;
                         color = color,
                         label = string(labels[ix]),
@@ -149,7 +140,7 @@ function _dataframe_plots_internal(
                     # Add band for fill
                     CairoMakie.band!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         cumulative,
                         upper;
                         color = (color, 0.3),
@@ -158,7 +149,7 @@ function _dataframe_plots_internal(
                     # Regular area plot
                     CairoMakie.band!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         cumulative,
                         upper;
                         color = (color, 0.5),
@@ -167,7 +158,7 @@ function _dataframe_plots_internal(
                     # Add line on top for better visibility
                     CairoMakie.lines!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         upper;
                         color = color,
                     )
@@ -176,14 +167,14 @@ function _dataframe_plots_internal(
             end
         elseif stack && nofill
             # Stacked lines without fill
-            cumulative = zeros(length(time_range))
+            cumulative = zeros(length(time_range_float))
             for ix in 1:length(labels)
                 cumulative .+= data[:, ix]
                 color = seriescolor[ix]
                 if stair
                     CairoMakie.stairs!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         cumulative;
                         color = color,
                         label = string(labels[ix]),
@@ -192,7 +183,7 @@ function _dataframe_plots_internal(
                 else
                     CairoMakie.lines!(
                         plot.axis,
-                        time_range,
+                        time_range_float,
                         cumulative;
                         color = color,
                         label = string(labels[ix]),
@@ -208,22 +199,17 @@ function _dataframe_plots_internal(
                 if stair
                     plot_kwargs[:step] = :post
                 end
-                plot_func(plot.axis, time_range, data[:, ix]; plot_kwargs...)
+                plot_func(plot.axis, time_range_float, data[:, ix]; plot_kwargs...)
             end
         end
 
-        # Set y-axis limits
-        ylims_tuple = get(kwargs, :ylims, _get_ylims(plot, data))
-        if !isnothing(ylims_tuple[1]) || !isnothing(ylims_tuple[2])
-            CairoMakie.ylims!(plot.axis, ylims_tuple...)
-        end
-
-        # Set x-axis ticks to show start and end times
-        # CairoMakie expects tuple of (positions, labels)
-        tick_positions = [time_range[1], last(time_range)]
-        tick_labels = string.(tick_positions)
+        tick_positions = [time_range_float[1], last(time_range_float)]
+        tick_labels = string.([time_range[1], last(time_range)])
         plot.axis.xticks = (tick_positions, tick_labels)
     end
+
+    # Reset axes limits
+    CairoMakie.reset_limits!(plot.axis)
 
     # Update series count
     plot.series_count += length(labels)
