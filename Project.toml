@@ -1,7 +1,7 @@
 name = "PowerGraphics"
 uuid = "5f7eddb3-86b1-49e8-a95a-ddc0f45eea41"
-authors = ["Clayton Barrows", "Lily Hanig", "Jose Daniel Lara", "Sourabh Dalvi", "Dheepak Krishnamurthy"]
 version = "0.21.0"
+authors = ["Clayton Barrows", "Lily Hanig", "Jose Daniel Lara", "Sourabh Dalvi", "Dheepak Krishnamurthy"]
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -12,7 +12,7 @@ DataStructures = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 InfrastructureSystems = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
-PlotlyLight = "ca7969ec-10b3-423c-8b1c-35a4e6d3b13f"
+PlotlyLight = "ca7969ec-10b3-423e-8d99-40f33abb42bf"
 PowerAnalytics = "56ce1300-00bc-47e4-ba8c-b166ccc19f51"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
@@ -21,12 +21,12 @@ YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [compat]
 CSV = "~0.9, 0.10"
-CairoMakie = "0.12"
+CairoMakie = "0.15"
 Colors = "~0.12"
 DataFrames = "1"
 DataStructures = "~0.18, ~0.19"
 InfrastructureSystems = "3"
-PlotlyLight = "0.6"
+PlotlyLight = "0.13.1"
 PowerAnalytics = "^1.1"
 PowerSystems = "5"
 Requires = "1"

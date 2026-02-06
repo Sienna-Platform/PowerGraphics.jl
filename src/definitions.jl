@@ -9,7 +9,7 @@ const DEFAULT_PALETTE_FILE = joinpath(
 struct PaletteColor
     category::AbstractString
     RGB::AbstractString
-    color::RGBA{Float64}
+    color::Colors.RGBA{Float64}
     order::Int64
 end
 
