@@ -155,7 +155,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             "pg_data$file_ext",
             "pg_data_stack$file_ext",
             "pg_data_bar$file_ext",
-            "pg_data_bar_stack$file_ext"
+            "pg_data_bar_stack$file_ext",
         ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
@@ -332,7 +332,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             "fuel$file_ext",
             "fuel_stack$file_ext",
             "fuel_bar$file_ext",
-            "fuel_bar_stack$file_ext"
+            "fuel_bar_stack$file_ext",
         ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
