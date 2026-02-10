@@ -1,5 +1,4 @@
 isdefined(Base, :__precompile__) && __precompile__()
-@info "PowerGraphics.jl loads CairoMakie and PlotlyLight. Precompile might take a while"
 module PowerGraphics
 
 export load_palette
@@ -19,12 +18,9 @@ export save_plot
 #I/O Imports
 import Dates
 import TimeSeries
-import Requires
 import Colors
 import DataFrames
 import YAML
-import CairoMakie
-import PlotlyLight
 import DataStructures: OrderedDict, SortedDict
 import PowerSystems
 import InfrastructureSystems
@@ -37,16 +33,18 @@ const PA = PowerAnalytics
 
 include("backends.jl")
 include("definitions.jl")
-include("plot_recipes.jl")
-include("plotly_recipes.jl")
-include("make_report.jl")
 include("call_plots.jl")
 
-function __init__()
-    Requires.@require Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9" include(
-        "make_report.jl",
-    )
-    @info "PlotlyLight loaded. Use plot_*_plotly() functions for interactive plots."
+function _dataframe_plots_internal()
+    @error "Either CairoMakie or PlotlyLight required."
+end
+
+function set_seriescolor(seriescolor::Array, vars::Array)
+    color_length = length(seriescolor)
+    var_length = length(vars)
+    n = Int(ceil(var_length / color_length))
+    colors = repeat(seriescolor, n)[1:var_length]
+    return colors
 end
 
 end #module

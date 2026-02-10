@@ -24,9 +24,9 @@ report(results, out_path, template)
 - `doctype::String = "md2html"`: create an HTML, default is PDF via latex
 - `backend::PlottingBackend = CairoMakieBackend()`: sets the plotting backend (CairoMakieBackend or PlotlyLightBackend)
 """
-function report(res::IS.Results, out_path::String, design_template::String; kwargs...)
+function report(res::PowerGraphics.IS.Results, out_path::String, design_template::String; kwargs...)
     doctype = get(kwargs, :doctype, "md2pdf")
-    plot_backend = get(kwargs, :backend, CairoMakieBackend())
+    plot_backend = get(kwargs, :backend, PowerGraphics.CairoMakieBackend())
     initial_time = get(kwargs, :initial_time, nothing)
     len = get(kwargs, :horizon, nothing)
 
