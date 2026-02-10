@@ -747,12 +747,11 @@ save_plot(plot, "my_plot.png")
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
 """
-function save_plot(plot::CairoMakiePlot, filename::String; kwargs...)
+function save_plot(plot, filename::String; kwargs...)
     return save_plot(plot, filename, CairoMakieBackend(); kwargs...)
 end
 
 # For PlotlyJS plots (no specific type, handled generically)
-function save_plot(plot, filename::String; kwargs...)
-    # Assume PlotlyJS plot if not CairoMakiePlot
+function save_plot_plotly(plot, filename::String; kwargs...)
     return save_plot(plot, filename, PlotlyLightBackend(); kwargs...)
 end

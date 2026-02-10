@@ -105,8 +105,6 @@ function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
 end
 
 const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
-const SUPPORTED_PLOTLY_SAVE_KWARGS =
-    [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
 
 function match_fuel_colors(data::DataFrames.DataFrame, backend::CairoMakieBackend; palette = PALETTE)
     color_range = get_palette_fuel(palette)

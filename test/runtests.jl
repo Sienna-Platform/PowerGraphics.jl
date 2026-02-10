@@ -9,13 +9,15 @@ import InfrastructureSystems: Deterministic, Probabilistic, Scenarios, Forecast
 using PowerSystems
 using PowerGraphics
 using PowerAnalytics
-using PlotlyLight
 using PowerSimulations
 using StorageSystemsSimulations
 using HiGHS
 using Weave
 using TimeSeries
 using HydroPowerSimulations
+
+using CairoMakie
+using PlotlyLight
 
 const PG = PowerGraphics
 const IS = InfrastructureSystems

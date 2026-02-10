@@ -17,7 +17,8 @@ function test_reports(file_path::String; backend_pkg::String = "cairomakie")
         report_out_path = joinpath(out_path, "test_report.html")
         (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
 
-        PG.report(
+        plotly_light_ext = Base.get_extension(PowerGraphics, :PlotlyLightExt)
+        plotly_light_ext.report(
             results_uc,
             report_out_path,
             generic_template;

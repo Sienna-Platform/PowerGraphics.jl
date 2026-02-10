@@ -8,25 +8,17 @@ mutable struct CairoMakiePlot
     has_legend::Bool  # Track if legend has been created
 end
 
-function set_seriescolor(seriescolor::Array, vars::Array)
-    color_length = length(seriescolor)
-    var_length = length(vars)
-    n = Int(ceil(var_length / color_length))
-    colors = repeat(seriescolor, n)[1:var_length]
-    return colors
-end
-
-function _empty_plot(backend::CairoMakieBackend)
+function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
     fig = CairoMakie.Figure()
     ax = CairoMakie.Axis(fig[1, 1])
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
-function _dataframe_plots_internal(
+function PowerGraphics._dataframe_plots_internal(
     plot::Union{CairoMakiePlot, Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::CairoMakieBackend;
+    backend::PowerGraphics.CairoMakieBackend;
     kwargs...,
 )
     # Get plot kwargs
@@ -38,7 +30,7 @@ function _dataframe_plots_internal(
     stair = get(kwargs, :stair, false)
 
     time_interval =
-        IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
+        PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -48,8 +40,8 @@ function _dataframe_plots_internal(
 
     # Get colors
     existing_series = plot.series_count
-    seriescolor = set_seriescolor(
-        get(kwargs, :seriescolor, get_palette_cairomakie(get(kwargs, :palette, PALETTE))),
+    seriescolor = PowerGraphics.set_seriescolor(
+        get(kwargs, :seriescolor, PowerGraphics.get_palette_cairomakie(get(kwargs, :palette, PowerGraphics.PALETTE))),
         vcat(ones(existing_series), DataFrames.names(variable)),
     )[(existing_series + 1):end]
 
@@ -62,8 +54,8 @@ function _dataframe_plots_internal(
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(PA.no_datetime(variable))
-    labels = DataFrames.names(PA.no_datetime(variable))
+    data = Matrix(PowerGraphics.PA.no_datetime(variable))
+    labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
 
     # Set axis properties
     plot.axis.xlabel = "$time_interval"
@@ -241,7 +233,7 @@ function _dataframe_plots_internal(
     return plot
 end
 
-function save_plot(plot::CairoMakiePlot, filename::String, backend::CairoMakieBackend; kwargs...)
+function PowerGraphics.save_plot(plot::CairoMakiePlot, filename::String, backend::PowerGraphics.CairoMakieBackend; kwargs...)
     CairoMakie.save(filename, plot.figure)
     @info "saved plot" filename
     return filename

@@ -1,22 +1,22 @@
 # PlotlyLight backend implementation
 
-function _empty_plot(backend::PlotlyLightBackend)
+function PowerGraphics._empty_plot(backend::PowerGraphics.PlotlyLightBackend)
     # Create an empty plot using PlotlyLight
     return PlotlyLight.Plot()
 end
 
-function _dataframe_plots_internal(
+function PowerGraphics._dataframe_plots_internal(
     plot,
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::PlotlyLightBackend;
+    backend::PowerGraphics.PlotlyLightBackend;
     kwargs...,
 )
-    names = DataFrames.names(PA.no_datetime(variable))
+    names = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
     plot_length = length(plot.data)
     seriescolor = permutedims(
-        set_seriescolor(
-            get(kwargs, :seriescolor, get_palette_plotly(get(kwargs, :palette, PALETTE))),
+        PowerGraphics.set_seriescolor(
+            get(kwargs, :seriescolor, PowerGraphics.get_palette_plotly(get(kwargs, :palette, PowerGraphics.PALETTE))),
             vcat(ones(plot_length), names),
         )[(plot_length + 1):end],
     )
@@ -29,7 +29,7 @@ function _dataframe_plots_internal(
     nofill = get(kwargs, :nofill, !bar && !stack)
 
     time_interval =
-        IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
+        PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -39,7 +39,7 @@ function _dataframe_plots_internal(
         @warn "Plot dataframe empty: skipping plot creation"
         plot_data = Array{Float64}(undef, 0, 0)
     else
-        plot_data = Matrix(PA.no_datetime(variable))
+        plot_data = Matrix(PowerGraphics.PA.no_datetime(variable))
     end
 
     plot_type = bar ? "bar" : "scatter"
@@ -154,7 +154,10 @@ function _dataframe_plots_internal(
     return plot
 end
 
-function save_plot(plot, filename::String, backend::PlotlyLightBackend; kwargs...)
+const SUPPORTED_PLOTLY_SAVE_KWARGS =
+    [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
+
+function PowerGraphics.save_plot(plot, filename::String, backend::PowerGraphics.PlotlyLightBackend; kwargs...)
     save_kwargs = Dict{Symbol, Any}((
         (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
     ))
