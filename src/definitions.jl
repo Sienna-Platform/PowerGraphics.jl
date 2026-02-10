@@ -106,7 +106,11 @@ end
 
 const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
 
-function match_fuel_colors(data::DataFrames.DataFrame, backend::CairoMakieBackend; palette = PALETTE)
+function match_fuel_colors(
+    data::DataFrames.DataFrame,
+    backend::CairoMakieBackend;
+    palette = PALETTE,
+)
     color_range = get_palette_fuel(palette)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
@@ -125,7 +129,11 @@ function match_fuel_colors(data::DataFrames.DataFrame, backend::CairoMakieBacken
     return default
 end
 
-function match_fuel_colors(data::DataFrames.DataFrame, backend::PlotlyLightBackend; palette = PALETTE)
+function match_fuel_colors(
+    data::DataFrames.DataFrame,
+    backend::PlotlyLightBackend;
+    palette = PALETTE,
+)
     color_range = get_palette_plotly_fuel(palette)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)

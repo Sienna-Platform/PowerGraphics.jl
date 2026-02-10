@@ -129,7 +129,11 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
         p,
         load_agg,
         load.time;
-        seriescolor = get(kwargs, :seriescolor, get_palette_seriescolor(CairoMakieBackend(), palette)),
+        seriescolor = get(
+            kwargs,
+            :seriescolor,
+            get_palette_seriescolor(CairoMakieBackend(), palette),
+        ),
         linestyle = Symbol(linestyle),
         line_dash = string(linestyle),
         linewidth = get(kwargs, :linewidth, 1),
@@ -171,7 +175,11 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
         p,
         load_agg,
         load.time;
-        seriescolor = get(kwargs, :seriescolor, get_palette_seriescolor(PlotlyLightBackend(), palette)),
+        seriescolor = get(
+            kwargs,
+            :seriescolor,
+            get_palette_seriescolor(PlotlyLightBackend(), palette),
+        ),
         linestyle = Symbol(linestyle),
         line_dash = string(linestyle),
         linewidth = get(kwargs, :linewidth, 1),
@@ -240,7 +248,12 @@ function plot_dataframe(
 end
 
 function plot_dataframe_plotly(df::DataFrames.DataFrame; kwargs...)
-    return plot_dataframe_plotly!(_empty_plot_plotly(), PA.no_datetime(df), df.DateTime; kwargs...)
+    return plot_dataframe_plotly!(
+        _empty_plot_plotly(),
+        PA.no_datetime(df),
+        df.DateTime;
+        kwargs...,
+    )
 end
 function plot_dataframe_plotly(
     df::DataFrames.DataFrame,
@@ -593,7 +606,11 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
     seriescolor =
-        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, CairoMakieBackend(); palette = palette))
+        get(
+            kwargs,
+            :seriescolor,
+            match_fuel_colors(fuel_agg, CairoMakieBackend(); palette = palette),
+        )
     p = plot_dataframe!(
         p,
         fuel_agg,
@@ -675,7 +692,11 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
     seriescolor =
-        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette))
+        get(
+            kwargs,
+            :seriescolor,
+            match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette),
+        )
     p = plot_dataframe_plotly!(
         p,
         fuel_agg,
