@@ -34,6 +34,13 @@ using Pkg
 Pkg.add("PlotlyLight")
 ```
 
+Backends are loaded as package extensions, so the user must explicitly load whichever backend they plan to use. E.g.:
+
+```julia
+using CairoMakie
+using PowerGraphics
+```
+
 When using `PowerGraphics.jl` within a jupyter notebook, `WebIO.jl` is also required:
 
 ```julia
