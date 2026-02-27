@@ -47,4 +47,10 @@ function set_seriescolor(seriescolor::Array, vars::Array)
     return colors
 end
 
+if !(@isdefined CairoMakie) && !(@isdefined PlotlyLight)
+    @warn "PowerGraphics.jl has been loaded, but neither CairoMakie nor PlotlyLight has been loaded yet. " *
+    "At least one must be included for PowerGraphics to function properly. Move either import above this one " *
+    "to suppress this warning."
+end
+
 end #module
