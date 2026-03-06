@@ -28,6 +28,7 @@ function PowerGraphics._dataframe_plots_internal(
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
+    label_fn = get(kwargs, :label_fn, s -> s)
 
     time_interval =
         PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
@@ -56,6 +57,7 @@ function PowerGraphics._dataframe_plots_internal(
 
     data = Matrix(PowerGraphics.PA.no_datetime(variable))
     labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
+    labels = [label_fn(label) for label in labels]
 
     # Set axis properties
     plot.axis.xlabel = "$time_interval"

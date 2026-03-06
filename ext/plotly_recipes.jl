@@ -12,7 +12,16 @@ function PowerGraphics._dataframe_plots_internal(
     backend::PowerGraphics.PlotlyLightBackend;
     kwargs...,
 )
+    save_fig = get(kwargs, :save, nothing)
+    y_label = get(kwargs, :y_label, "")
+    title = get(kwargs, :title, " ")
+    stack = get(kwargs, :stack, false)
+    bar = get(kwargs, :bar, false)
+    nofill = get(kwargs, :nofill, !bar && !stack)
+    label_fn = get(kwargs, :label_fn, s -> s)
+
     names = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
+    names = [label_fn(name) for name in names]
     plot_length = length(plot.data)
     seriescolor = permutedims(
         PowerGraphics.set_seriescolor(
@@ -20,13 +29,6 @@ function PowerGraphics._dataframe_plots_internal(
             vcat(ones(plot_length), names),
         )[(plot_length + 1):end],
     )
-
-    save_fig = get(kwargs, :save, nothing)
-    y_label = get(kwargs, :y_label, "")
-    title = get(kwargs, :title, " ")
-    stack = get(kwargs, :stack, false)
-    bar = get(kwargs, :bar, false)
-    nofill = get(kwargs, :nofill, !bar && !stack)
 
     time_interval =
         PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
