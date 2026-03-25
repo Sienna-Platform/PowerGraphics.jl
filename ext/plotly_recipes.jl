@@ -18,7 +18,7 @@ function PowerGraphics._dataframe_plots_internal(
     stack = get(kwargs, :stack, false)
     bar = get(kwargs, :bar, false)
     nofill = get(kwargs, :nofill, !bar && !stack)
-    label_fn = get(kwargs, :label_fn, s -> s)
+    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
     names = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
     names = [label_fn(name) for name in names]
@@ -146,6 +146,22 @@ function PowerGraphics._dataframe_plots_internal(
     plot.layout.xaxis.title.text = string(time_interval)
     plot.layout.title.text = title
     plot.layout.barmode = stack ? "relative" : "group"
+
+    legend_position = get(kwargs, :legend_position, :right)
+    legend_font_size = get(kwargs, :legend_font_size, nothing)
+
+    if legend_position == :bottom
+        plot.layout.legend = PlotlyLight.Config(
+            orientation = "h",
+            x = 0,
+            y = -0.2,
+            xanchor = "left",
+            yanchor = "top",
+        )
+    end
+    if !isnothing(legend_font_size)
+        plot.layout.legend.font = PlotlyLight.Config(size = legend_font_size)
+    end
 
     get(kwargs, :set_display, true) && display(plot)
     if !isnothing(save_fig)
