@@ -14,6 +14,8 @@ export plot_results!, plot_results_plotly!
 export plot_fuel!, plot_fuel_plotly!
 export report
 export save_plot
+export label_component, label_variable, label_acronym, label_first_word
+export label_short, label_truncate
 
 #I/O Imports
 import Dates
@@ -33,6 +35,7 @@ const PA = PowerAnalytics
 
 include("backends.jl")
 include("definitions.jl")
+include("label_utils.jl")
 include("call_plots.jl")
 
 function _dataframe_plots_internal()

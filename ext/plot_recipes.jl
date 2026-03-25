@@ -28,7 +28,7 @@ function PowerGraphics._dataframe_plots_internal(
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
-    label_fn = get(kwargs, :label_fn, s -> s)
+    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
     time_interval =
         PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
@@ -219,8 +219,25 @@ function PowerGraphics._dataframe_plots_internal(
                 end
             end
         end
-        # Create legend outside the axis area (similar to Plots.jl :outerright)
-        CairoMakie.Legend(plot.figure[1, 2], plot.axis)
+
+        legend_position = get(kwargs, :legend_position, :right)
+        legend_font_size = get(kwargs, :legend_font_size, nothing)
+        legend_kwargs = Dict{Symbol, Any}()
+        if !isnothing(legend_font_size)
+            legend_kwargs[:labelsize] = legend_font_size
+        end
+
+        if legend_position == :bottom
+            CairoMakie.Legend(
+                plot.figure[2, 1], plot.axis;
+                orientation = :horizontal,
+                tellwidth = false,
+                tellheight = true,
+                legend_kwargs...,
+            )
+        else
+            CairoMakie.Legend(plot.figure[1, 2], plot.axis; legend_kwargs...)
+        end
         plot.has_legend = true
     end
 

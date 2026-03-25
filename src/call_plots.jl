@@ -62,6 +62,9 @@ plot = plot_demand(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """  # ^ temporary workaround for https://github.com/NREL-Sienna/PowerSystems.jl/issues/1598
 
@@ -104,6 +107,9 @@ Plots the demand in the system.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
 """
@@ -190,8 +196,7 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
     )
 
     if set_display
-        PJS = _get_plotlyjs()
-        display(PJS.plot(p))
+        display(p)
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
@@ -235,6 +240,9 @@ plot = plot_dataframe(df, time_range)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_dataframe(df::DataFrames.DataFrame; kwargs...)
     return plot_dataframe!(_empty_plot(), PA.no_datetime(df), df.DateTime; kwargs...)
@@ -288,6 +296,9 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_dataframe!(p, df::DataFrames.DataFrame; kwargs...)
     return plot_dataframe!(p, PA.no_datetime(df), df.DateTime; kwargs...)
@@ -345,6 +356,9 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_powerdata(powerdata::PA.PowerData; kwargs...)
     return plot_powerdata!(_empty_plot(), powerdata; kwargs...)
@@ -377,6 +391,9 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
     title = get(kwargs, :title, "")
@@ -424,8 +441,7 @@ function plot_powerdata_plotly!(p, powerdata::PA.PowerData; kwargs...)
     p = plot_dataframe_plotly!(p, data, powerdata.time; set_display = false, kwargs...)
 
     if set_display
-        PJS = _get_plotlyjs()
-        display(PJS.plot(p))
+        display(p)
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
@@ -456,6 +472,9 @@ Makes a plot from a results dictionary object
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(_empty_plot(), PA.PowerData(results); kwargs...)
@@ -487,6 +506,9 @@ Makes a plot from a results dictionary
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 """
 function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(p, PA.PowerData(results); kwargs...)
@@ -531,6 +553,9 @@ plot = plot_fuel(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """
 function plot_fuel(result::IS.Results; kwargs...)
@@ -569,6 +594,9 @@ and assigns each fuel type a specific color.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
@@ -734,8 +762,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     # TODO: how to display this?
 
     if set_display
-        PJS = _get_plotlyjs()
-        display(PJS.plot(p))
+        display(p)
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
