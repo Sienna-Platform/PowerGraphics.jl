@@ -11,8 +11,8 @@ using PowerGraphics
 using PowerAnalytics
 using Plots
 
-if WEAVE_ARGS["backend"] == plotlyjs()
-    Plots.plotlyjs()
+if WEAVE_ARGS["backend"] == plotlylight()
+    Plots.plotlylight()
 else
     Plots.gr()
 end
