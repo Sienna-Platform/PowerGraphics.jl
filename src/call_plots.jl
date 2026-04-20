@@ -60,7 +60,7 @@ plot = plot_demand(res)
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
-"""  # ^ temporary workaround for https://github.com/NREL-Sienna/PowerSystems.jl/issues/1598
+"""  # ^ temporary workaround for https://github.com/Sienna-Platform/PowerSystems.jl/issues/1598
 
 function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
     return plot_demand!(_empty_plot(), result; kwargs...)
