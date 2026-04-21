@@ -2,6 +2,10 @@ using Documenter
 import DataStructures: OrderedDict
 using PowerGraphics
 using DocumenterInterLinks
+using Literate
+
+# UPDATE FOR CURRENT MODULE NAME HERE
+const _DOCS_BASE_URL = "https://nrel-sienna.github.io/PowerGraphics.jl/stable"
 
 links = InterLinks(
     "Plots" => "https://docs.juliaplots.org/stable/",
@@ -10,6 +14,9 @@ links = InterLinks(
     "InfrastructureSystems" => "https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/",
     "DataFrames" => "https://dataframes.juliadata.org/stable/",
 )
+
+include(joinpath(@__DIR__, "make_tutorials.jl"))
+make_tutorials()
 
 if haskey(ENV, "GITHUB_ACTIONS")
     ENV["JULIA_DEBUG"] = "Documenter"
