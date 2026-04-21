@@ -26,14 +26,10 @@ import DataFrames
 import YAML
 Reexport.@reexport using Plots
 import DataStructures: OrderedDict, SortedDict
-import PowerSystems
-import InfrastructureSystems
+import PowerSystems as PSY
+import InfrastructureSystems as IS
 import InteractiveUtils
-import PowerAnalytics
-
-const PSY = PowerSystems
-const IS = InfrastructureSystems
-const PA = PowerAnalytics
+import PowerAnalytics as PA
 
 include("definitions.jl")
 include("plot_recipes.jl")

@@ -4,7 +4,7 @@ using Logging
 using Dates
 using DataFrames
 using DataStructures
-import InfrastructureSystems
+import InfrastructureSystems as IS
 import InfrastructureSystems: Deterministic, Probabilistic, Scenarios, Forecast
 using PowerSystems
 using PowerGraphics
@@ -18,7 +18,6 @@ using TimeSeries
 using HydroPowerSimulations
 
 const PG = PowerGraphics
-const IS = InfrastructureSystems
 const PSY = PowerSystems
 const PSI = PowerSimulations
 const PA = PowerAnalytics
@@ -32,8 +31,7 @@ const TEST_RESULT_DIR = joinpath(TEST_OUTPUTS, "results")
 !isdir(TEST_RESULT_DIR) && mkdir(TEST_RESULT_DIR)
 const TEST_SIM_NAME = "results_sim"
 
-import PowerSystemCaseBuilder
-const PSB = PowerSystemCaseBuilder
+import PowerSystemCaseBuilder as PSB
 template_dir = joinpath(BASE_DIR, "report_templates")
 const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 
