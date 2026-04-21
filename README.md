@@ -56,4 +56,4 @@ Contributions to the development and enhancement of PowerGraphics is welcome. Pl
 ## License
 
 PowerGraphics is released under a BSD [license](https://github.com/Sienna-Platform/PowerGraphics.jl/blob/main/LICENSE). PowerGraphics has been developed as part of the Scalable Integrated Infrastructure Planning (SIIP)
-initiative at the U.S. Department of Energy's National Renewable Energy Laboratory ([NREL](https://www.nrel.gov/))
+initiative at the U.S. Department of Energy's National Laboratory of the Rockies ([NLR](https://www.nlr.gov/)) formerly known as NREL. 
