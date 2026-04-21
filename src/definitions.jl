@@ -26,7 +26,7 @@ end
 
 Loads color palette yaml from environment, the `DEFAULT_PALETTE_FILE`,
 or a given file. See
-[`color-palette.yaml`](https://github.com/NREL-Sienna/PowerGraphics.jl/blob/main/report_templates/color-palette.yaml)
+[`color-palette.yaml`](https://github.com/Sienna-Platform/PowerGraphics.jl/blob/main/report_templates/color-palette.yaml)
 for an example.
 
 # Arguments
