@@ -477,6 +477,11 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
 
     # passing names here enforces order
     # TODO: enable custom sort with kwarg
+    for key in keys(fuel)
+        if key ∉ get_palette_category(palette)
+            @error "Fuel category $key not found in palette categories"
+        end
+    end
     fuel_agg = PA.combine_categories(
         fuel;
         names = intersect(get_palette_category(palette), keys(fuel)),
