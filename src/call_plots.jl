@@ -475,13 +475,13 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     filter_func = get(kwargs, :filter_func, PSY.get_available)
     kwargs = popkwargs(kwargs, :filter_func)
 
-    # passing names here enforces order
-    # TODO: enable custom sort with kwarg
     for key in keys(fuel)
         if key ∉ get_palette_category(palette)
-            @error "Fuel category $key not found in palette categories"
+            @warn "Fuel category $key not found in palette categories. In order to include in the plot an entry must be added in the palette yaml file."
         end
     end
+    # passing names here enforces order
+    # TODO: enable custom sort with kwarg
     fuel_agg = PA.combine_categories(
         fuel;
         names = intersect(get_palette_category(palette), keys(fuel)),
