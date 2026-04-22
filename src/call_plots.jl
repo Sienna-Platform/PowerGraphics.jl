@@ -522,12 +522,16 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
             set_display = false,
             kwargs...,
         )
+        # _dataframe_plots_internal offsets into the color array by the number of existing
+        # series, which would scramble discharge colors. Prepend charging colors as padding
+        # so the offset consumes them and discharge colors land at the correct positions.
+        discharge_colors_padded = vcat(vec(charging_colors), vec(discharge_colors))
         p = plot_dataframe!(
             p,
             discharge_agg,
             gen.time;
             stack = stack,
-            seriescolor = discharge_colors,
+            seriescolor = discharge_colors_padded,
             y_label = y_label,
             set_display = false,
             kwargs...,
