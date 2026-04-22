@@ -502,19 +502,51 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     )
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
-    seriescolor =
-        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, backend; palette = palette))
-    p = plot_dataframe!(
-        p,
-        fuel_agg,
-        gen.time;
-        stack = stack,
-        seriescolor = seriescolor,
-        y_label = y_label,
-        title = title,
-        set_display = false,
-        kwargs...,
-    )
+    if include_charging && !isempty(charging_names)
+        # Plot charging and discharge as independent stacks so each cumsum starts from zero.
+        # Charging columns are all negative (extend below zero); discharge are all positive.
+        charging_agg = fuel_agg[:, charging_names]
+        discharge_agg = fuel_agg[:, discharge_names]
+        charging_colors =
+            get(kwargs, :seriescolor, match_fuel_colors(charging_agg, backend; palette = palette))
+        discharge_colors =
+            get(kwargs, :seriescolor, match_fuel_colors(discharge_agg, backend; palette = palette))
+        p = plot_dataframe!(
+            p,
+            charging_agg,
+            gen.time;
+            stack = stack,
+            seriescolor = charging_colors,
+            y_label = y_label,
+            title = title,
+            set_display = false,
+            kwargs...,
+        )
+        p = plot_dataframe!(
+            p,
+            discharge_agg,
+            gen.time;
+            stack = stack,
+            seriescolor = discharge_colors,
+            y_label = y_label,
+            set_display = false,
+            kwargs...,
+        )
+    else
+        seriescolor =
+            get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, backend; palette = palette))
+        p = plot_dataframe!(
+            p,
+            fuel_agg,
+            gen.time;
+            stack = stack,
+            seriescolor = seriescolor,
+            y_label = y_label,
+            title = title,
+            set_display = false,
+            kwargs...,
+        )
+    end
 
     kwargs = popkwargs(popkwargs(kwargs, :nofill), :seriescolor)
 
