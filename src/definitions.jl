@@ -112,6 +112,23 @@ const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
 const SUPPORTED_PLOTLY_SAVE_KWARGS =
     [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
 
+const CHARGING_SUFFIX = " Charging"
+
+function _lookup_fuel_color(name::String, color_fuel::DataFrames.DataFrame)
+    matches = color_fuel[findall(in([name]), color_fuel.fuels), :colors]
+    if !isempty(matches)
+        return matches[1]
+    end
+    if endswith(name, CHARGING_SUFFIX)
+        base = name[1:(end - length(CHARGING_SUFFIX))]
+        base_matches = color_fuel[findall(in([base]), color_fuel.fuels), :colors]
+        if !isempty(base_matches)
+            return base_matches[1]
+        end
+    end
+    error("No palette color found for fuel category: \"$name\"")
+end
+
 function match_fuel_colors(data::DataFrames.DataFrame, backend; palette = PALETTE)
     if backend == Plots.PlotlyJSBackend()
         color_range = get_palette_plotly_fuel(palette)
@@ -121,16 +138,10 @@ function match_fuel_colors(data::DataFrames.DataFrame, backend; palette = PALETT
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
     names = DataFrames.names(data)
-    default =
-        [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
+    default = [_lookup_fuel_color("$(names[1])", color_fuel)]
     for i in 2:length(names)
-        @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
-            :,
-            :colors,
-        ])
-        specific_color =
-            (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][:, :colors])[1]
-        default = hcat(default, specific_color)
+        @debug names[i]
+        default = hcat(default, _lookup_fuel_color("$(names[i])", color_fuel))
     end
     return default
 end

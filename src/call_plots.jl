@@ -448,6 +448,7 @@ and assigns each fuel type a specific color.
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
+- `include_charging::Bool = false`: If `true`, storage charging power is shown as negative values below the x-axis, using the same color as the corresponding discharge category.
 """
 function plot_fuel!(p, result::IS.Results; kwargs...)
     backend = Plots.backend()
@@ -455,13 +456,14 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     save_fig = get(kwargs, :save, nothing)
     curtailment = get(kwargs, :curtailment, true)
     slacks = get(kwargs, :slacks, true)
+    include_charging = get(kwargs, :include_charging, false)
     load = get(kwargs, :load, true)
     title = get(kwargs, :title, "Fuel")
     stack = get(kwargs, :stack, true)
     bar = get(kwargs, :bar, false)
     palette = get(kwargs, :palette, PALETTE)
     kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display, :include_charging])
 
     # Generation stack
     gen = PA.get_generation_data(result; kwargs...)
@@ -470,21 +472,33 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
         throw(error("No System data present: please run `set_system!(results, sys)`"))
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
-    fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
+    fuel = PA.categorize_data(
+        gen.data,
+        cat;
+        curtailment = curtailment,
+        slacks = slacks,
+        include_charging = include_charging,
+    )
 
     filter_func = get(kwargs, :filter_func, PSY.get_available)
     kwargs = popkwargs(kwargs, :filter_func)
 
     for key in keys(fuel)
-        if key ∉ get_palette_category(palette)
+        if key ∉ get_palette_category(palette) && !endswith(key, CHARGING_SUFFIX)
             @warn "Fuel category $key not found in palette categories. In order to include in the plot an entry must be added in the palette yaml file."
         end
     end
-    # passing names here enforces order
-    # TODO: enable custom sort with kwarg
+    # Discharge categories in palette order
+    discharge_names = intersect(get_palette_category(palette), keys(fuel))
+    # Charging categories ordered as the mirror of their discharge counterparts:
+    # reverse the discharge order so the highest-order discharge type is closest to zero
+    discharge_with_charging =
+        filter(n -> haskey(fuel, n * CHARGING_SUFFIX), discharge_names)
+    charging_names = reverse(discharge_with_charging) .* CHARGING_SUFFIX
+    # passing names here enforces order: charging first (extends below zero), then discharge
     fuel_agg = PA.combine_categories(
         fuel;
-        names = intersect(get_palette_category(palette), keys(fuel)),
+        names = vcat(charging_names, discharge_names),
     )
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
