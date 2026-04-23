@@ -34,7 +34,7 @@ label_component("SomeLabel")                            # => "SomeLabel"
 function label_component(s::AbstractString)
     idx = findlast(_DOUBLE_UNDERSCORE, s)
     isnothing(idx) && return String(s)
-    return String(s[last(idx) + 1:end])
+    return String(s[(last(idx) + 1):end])
 end
 
 """
@@ -51,7 +51,7 @@ label_variable("SomeLabel")                            # => "SomeLabel"
 function label_variable(s::AbstractString)
     idx = findfirst(_DOUBLE_UNDERSCORE, s)
     isnothing(idx) && return String(s)
-    return String(s[1:first(idx) - 1])
+    return String(s[1:(first(idx) - 1)])
 end
 
 """
@@ -110,8 +110,8 @@ label_short("SomeLabel")                                       # => "SomeLabel"
 function label_short(s::AbstractString)
     idx = findfirst(_DOUBLE_UNDERSCORE, s)
     isnothing(idx) && return String(s)
-    variable_part = s[1:first(idx) - 1]
-    component_part = s[last(idx) + 1:end]
+    variable_part = s[1:(first(idx) - 1)]
+    component_part = s[(last(idx) + 1):end]
     return _camelcase_initials(variable_part) * ": " * String(component_part)
 end
 

@@ -625,11 +625,13 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     filter_func = get(kwargs, :filter_func, PSY.get_available)
     kwargs = popkwargs(kwargs, :filter_func)
 
-    # passing names here enforces order
-    # TODO: enable custom sort with kwarg
+    # passing names here enforces order; append any fuel categories not in the palette
+    palette_categories = get_palette_category(palette)
+    matched = intersect(palette_categories, keys(fuel))
+    unmatched = setdiff(keys(fuel), palette_categories)
     fuel_agg = PA.combine_categories(
         fuel;
-        names = intersect(get_palette_category(palette), keys(fuel)),
+        names = vcat(matched, sort(collect(unmatched))),
     )
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
@@ -711,11 +713,13 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     filter_func = get(kwargs, :filter_func, PSY.get_available)
     kwargs = popkwargs(kwargs, :filter_func)
 
-    # passing names here enforces order
-    # TODO: enable custom sort with kwarg
+    # passing names here enforces order; append any fuel categories not in the palette
+    palette_categories = get_palette_category(palette)
+    matched = intersect(palette_categories, keys(fuel))
+    unmatched = setdiff(keys(fuel), palette_categories)
     fuel_agg = PA.combine_categories(
         fuel;
-        names = intersect(get_palette_category(palette), keys(fuel)),
+        names = vcat(matched, sort(collect(unmatched))),
     )
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 

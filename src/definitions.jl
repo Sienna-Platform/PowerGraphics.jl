@@ -115,16 +115,18 @@ function match_fuel_colors(
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
     names = DataFrames.names(data)
-    default =
-        [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
-    for i in 2:length(names)
-        @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
-            :,
-            :colors,
-        ])
-        specific_color =
-            (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][:, :colors])[1]
-        default = hcat(default, specific_color)
+    fallback_colors = get_palette_cairomakie(palette)
+    fallback_idx = 1
+    default = []
+    for name in names
+        matched_rows = findall(in([name]), color_fuel.fuels)
+        if !isempty(matched_rows)
+            push!(default, color_fuel[matched_rows[1], :colors])
+        else
+            @debug "No palette color for fuel category '$name', using fallback"
+            push!(default, fallback_colors[mod1(fallback_idx, length(fallback_colors))])
+            fallback_idx += 1
+        end
     end
     return default
 end
@@ -138,16 +140,18 @@ function match_fuel_colors(
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
     names = DataFrames.names(data)
-    default =
-        [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
-    for i in 2:length(names)
-        @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
-            :,
-            :colors,
-        ])
-        specific_color =
-            (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][:, :colors])[1]
-        default = hcat(default, specific_color)
+    fallback_colors = get_palette_plotly(palette)
+    fallback_idx = 1
+    default = []
+    for name in names
+        matched_rows = findall(in([name]), color_fuel.fuels)
+        if !isempty(matched_rows)
+            push!(default, color_fuel[matched_rows[1], :colors])
+        else
+            @debug "No palette color for fuel category '$name', using fallback"
+            push!(default, fallback_colors[mod1(fallback_idx, length(fallback_colors))])
+            fallback_idx += 1
+        end
     end
     return default
 end

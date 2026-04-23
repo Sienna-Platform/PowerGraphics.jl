@@ -1,12 +1,17 @@
 # Change Backends
 
-`PowerGraphics.jl` relies on [`Plots.jl`](https://docs.juliaplots.org/stable/) to enable
-plotting via different backends. See the `Plots.jl` section on [backends](@extref Plots)
-for more details. Currently, two backends are supported in `PowerGraphics.jl`:
+`PowerGraphics.jl` uses Julia package extensions to support multiple plotting backends.
+Load the backend you want **before** (or alongside) `PowerGraphics`:
 
-  - [GR](@extref Plots [GR](https://github.com/jheinen/GR.jl)) (default): creates static
-    plots — run the `gr()` command to load
-  - [PlotlyLight](@extref Plots [Plotly-/-PlotlyLight](https://github.com/spencerlyon2/PlotlyLight.jl)):
-    creates interactive plots — run the `plotlylight()` command to load
+  - [CairoMakie](https://docs.makie.org/stable/) (recommended): creates static, publication-quality
+    plots — `using CairoMakie`
+  - [PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl): creates lightweight
+    interactive HTML plots — `using PlotlyLight`
 
-If you run neither command, `PowerGraphics.jl` will default to using GR.
+```julia
+using CairoMakie   # or PlotlyLight
+using PowerGraphics
+```
+
+If neither backend is loaded, `PowerGraphics.jl` will print a warning and plotting
+functions will not be available.

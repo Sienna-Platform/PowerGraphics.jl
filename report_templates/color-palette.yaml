@@ -31,6 +31,9 @@ Battery:
 NG-CC:
   RGB: "rgba(82, 133, 107, 1)"
   order: 11
+Natural Gas CC:
+  RGB: "rgba(82, 133, 107, 1)"
+  order: 58
 4 hrs.:
   RGB: "rgba(255, 104, 130, 1)"
   order: 48
@@ -127,12 +130,18 @@ Onshore:
 Natural gas:
   RGB: "rgba(82, 33, 107, 1)"
   order: 8
+Natural Gas:
+  RGB: "rgba(82, 33, 107, 1)"
+  order: 57
 DPV:
   RGB: "rgba(254, 230, 3, 1)"
   order: 29
 NG-CT:
   RGB: "rgba(194, 161, 219, 1)"
   order: 10
+Natural Gas CT:
+  RGB: "rgba(194, 161, 219, 1)"
+  order: 59
 Upgrades:
   RGB: "rgba(24, 127, 148, 1)"
   order: 15
@@ -148,6 +157,9 @@ Coal:
 NG-Steam:
   RGB: "rgba(61, 51, 118, 1)"
   order: 9
+Natural Gas ST:
+  RGB: "rgba(61, 51, 118, 1)"
+  order: 60
 Geothermal:
   RGB: "rgba(169, 98, 53, 1)"
   order: 35
