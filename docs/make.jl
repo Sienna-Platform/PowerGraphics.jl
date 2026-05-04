@@ -4,8 +4,6 @@ using PowerGraphics
 using DocumenterInterLinks
 using Literate
 
-# UPDATE FOR CURRENT MODULE NAME HERE
-const _DOCS_BASE_URL = "https://nrel-sienna.github.io/PowerGraphics.jl/stable"
 
 links = InterLinks(
     "Plots" => "https://docs.juliaplots.org/stable/",
