@@ -15,11 +15,8 @@ end
 # `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
 # `IS.Results` branch of `get_load_data` ignores `aggregation` entirely, so
 # the translation is a safe no-op there.
-const _AGGREGATE_STRING_TO_TYPE = Dict(
-    "System" => PSY.System,
-    "Bus" => PSY.ACBus,
-    "PowerLoad" => PSY.PowerLoad,
-)
+const _AGGREGATE_STRING_TO_TYPE =
+    Dict("System" => PSY.System, "Bus" => PSY.ACBus, "PowerLoad" => PSY.PowerLoad)
 
 function _aggregate_to_type(s::AbstractString)
     haskey(_AGGREGATE_STRING_TO_TYPE, s) || throw(
