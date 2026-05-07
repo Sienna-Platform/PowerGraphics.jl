@@ -9,22 +9,24 @@ date : 1-14
 ```julia; echo = false
 using PowerGraphics
 using PowerAnalytics
-using Plots
 
-if WEAVE_ARGS["backend"] == plotlylight()
-    Plots.plotlylight()
+backend = WEAVE_ARGS["backend"]
+if backend isa PowerGraphics.PlotlyLightBackend
+    plot_fuel_plotly(WEAVE_ARGS["results"]; bar = true, stack = true)
 else
-    Plots.gr()
+    plot_fuel(WEAVE_ARGS["results"]; bar = true, stack = true)
 end
-
-plot_fuel(WEAVE_ARGS["results"], bar = true, stack = true);
 ```
 
 # Stack Plots
 
 ```julia; echo = false
-
-plot_fuel(WEAVE_ARGS["results"]);
+backend = WEAVE_ARGS["backend"]
+if backend isa PowerGraphics.PlotlyLightBackend
+    plot_fuel_plotly(WEAVE_ARGS["results"])
+else
+    plot_fuel(WEAVE_ARGS["results"])
+end
 ```
 
 # Tables

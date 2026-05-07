@@ -1,7 +1,7 @@
 name = "PowerGraphics"
 uuid = "5f7eddb3-86b1-49e8-a95a-ddc0f45eea41"
-version = "0.21.0"
 authors = ["Clayton Barrows", "Lily Hanig", "Jose Daniel Lara", "Sourabh Dalvi", "Dheepak Krishnamurthy"]
+version = "0.21.0"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -13,17 +13,18 @@ InfrastructureSystems = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
 InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
 PowerAnalytics = "56ce1300-00bc-47e4-ba8c-b166ccc19f51"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
-Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 TimeSeries = "9e3dc215-6440-5c97-bce1-76c03772f85e"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
 
 [weakdeps]
 CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
 PlotlyLight = "ca7969ec-10b3-423e-8d99-40f33abb42bf"
+Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
 
 [extensions]
 CairoMakieExt = "CairoMakie"
 PlotlyLightExt = "PlotlyLight"
+WeaveExt = ["PlotlyLight", "Weave"]
 
 [compat]
 CSV = "~0.9, 0.10"
@@ -35,7 +36,7 @@ InfrastructureSystems = "3"
 PlotlyLight = "0.13.1"
 PowerAnalytics = "^1.1"
 PowerSystems = "5"
-Requires = "1"
 TimeSeries = "~0.25"
+Weave = "0.10"
 YAML = "~0.4"
 julia = "^1.10"

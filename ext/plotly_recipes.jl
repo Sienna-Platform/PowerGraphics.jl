@@ -25,13 +25,21 @@ function PowerGraphics._dataframe_plots_internal(
     plot_length = length(plot.data)
     seriescolor = permutedims(
         PowerGraphics.set_seriescolor(
-            get(kwargs, :seriescolor, PowerGraphics.get_palette_plotly(get(kwargs, :palette, PowerGraphics.PALETTE))),
+            get(
+                kwargs,
+                :seriescolor,
+                PowerGraphics.get_palette_plotly(
+                    get(kwargs, :palette, PowerGraphics.PALETTE),
+                ),
+            ),
             vcat(ones(plot_length), names),
         )[(plot_length + 1):end],
     )
 
     time_interval =
-        PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
+        PowerGraphics.IS.convert_compound_period(
+            length(time_range) * (time_range[2] - time_range[1]),
+        )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -58,13 +66,13 @@ function PowerGraphics._dataframe_plots_internal(
                 y_data = plot_data[:, ix]
                 sign_group = sum(y_data) >= 0 ? 0 : 10
 
-                trace_config = PlotlyLight.Config(
+                trace_config = PlotlyLight.Config(;
                     type = "scatter",
                     x = x_data,
                     y = y_data,
                     mode = "lines",
                     name = names[ix],
-                    line = PlotlyLight.Config(
+                    line = PlotlyLight.Config(;
                         color = seriescolor[ix],
                         dash = line_dash,
                         shape = line_shape,
@@ -85,10 +93,10 @@ function PowerGraphics._dataframe_plots_internal(
                 y_data = vec(plot_data[:, ix])
                 sign_group = sum(y_data) >= 0 ? 0 : 10
 
-                trace_config = PlotlyLight.Config(
+                trace_config = PlotlyLight.Config(;
                     type = "bar",
                     y = y_data,
-                    marker = PlotlyLight.Config(color = seriescolor[ix]),
+                    marker = PlotlyLight.Config(; color = seriescolor[ix]),
                     name = names[ix],
                     showlegend = true,
                 )
@@ -107,13 +115,13 @@ function PowerGraphics._dataframe_plots_internal(
             data_to_plot = plot_data[:, ix]
             sign_group = sum(data_to_plot) >= 0 ? 0 : 10
 
-            trace_config = PlotlyLight.Config(
+            trace_config = PlotlyLight.Config(;
                 type = "scatter",
                 x = time_range,
                 y = data_to_plot,
                 mode = "lines",
                 name = names[ix],
-                line = PlotlyLight.Config(
+                line = PlotlyLight.Config(;
                     color = seriescolor[ix],
                     dash = line_dash,
                     shape = line_shape,
@@ -151,7 +159,7 @@ function PowerGraphics._dataframe_plots_internal(
     legend_font_size = get(kwargs, :legend_font_size, nothing)
 
     if legend_position == :bottom
-        plot.layout.legend = PlotlyLight.Config(
+        plot.layout.legend = PlotlyLight.Config(;
             orientation = "h",
             x = 0,
             y = -0.2,
@@ -160,7 +168,7 @@ function PowerGraphics._dataframe_plots_internal(
         )
     end
     if !isnothing(legend_font_size)
-        plot.layout.legend.font = PlotlyLight.Config(size = legend_font_size)
+        plot.layout.legend.font = PlotlyLight.Config(; size = legend_font_size)
     end
 
     get(kwargs, :set_display, true) && display(plot)
@@ -175,7 +183,12 @@ end
 const SUPPORTED_PLOTLY_SAVE_KWARGS =
     [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
 
-function PowerGraphics.save_plot(plot, filename::String, backend::PowerGraphics.PlotlyLightBackend; kwargs...)
+function PowerGraphics.save_plot(
+    plot,
+    filename::String,
+    backend::PowerGraphics.PlotlyLightBackend;
+    kwargs...,
+)
     save_kwargs = Dict{Symbol, Any}((
         (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
     ))

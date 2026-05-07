@@ -4,10 +4,9 @@ using PowerGraphics
 using DocumenterInterLinks
 
 links = InterLinks(
-    "Plots" => "https://docs.juliaplots.org/stable/",
-    "PowerSystems" => "https://nrel-sienna.github.io/PowerSystems.jl/stable/",
-    "PowerSimulations" => "https://nrel-sienna.github.io/PowerSimulations.jl/stable/",
-    "InfrastructureSystems" => "https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/",
+    "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
+    "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
+    "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",
     "DataFrames" => "https://dataframes.juliadata.org/stable/",
 )
 

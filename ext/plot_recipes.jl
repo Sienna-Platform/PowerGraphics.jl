@@ -31,7 +31,9 @@ function PowerGraphics._dataframe_plots_internal(
     label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
     time_interval =
-        PowerGraphics.IS.convert_compound_period(length(time_range) * (time_range[2] - time_range[1]))
+        PowerGraphics.IS.convert_compound_period(
+            length(time_range) * (time_range[2] - time_range[1]),
+        )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -42,7 +44,13 @@ function PowerGraphics._dataframe_plots_internal(
     # Get colors
     existing_series = plot.series_count
     seriescolor = PowerGraphics.set_seriescolor(
-        get(kwargs, :seriescolor, PowerGraphics.get_palette_cairomakie(get(kwargs, :palette, PowerGraphics.PALETTE))),
+        get(
+            kwargs,
+            :seriescolor,
+            PowerGraphics.get_palette_cairomakie(
+                get(kwargs, :palette, PowerGraphics.PALETTE),
+            ),
+        ),
         vcat(ones(existing_series), DataFrames.names(variable)),
     )[(existing_series + 1):end]
 
@@ -75,10 +83,10 @@ function PowerGraphics._dataframe_plots_internal(
                 CairoMakie.barplot!(
                     plot.axis,
                     [1],                        # x position
-                    [plot_data[i]],             # height
+                    [plot_data[i]];             # height
                     stack = [1],                # same stack group
                     color = seriescolor[i],
-                    label = string(label)                 # legend label
+                    label = string(label),                 # legend label
                 )
             end
             cum = 0
@@ -86,9 +94,9 @@ function PowerGraphics._dataframe_plots_internal(
                 CairoMakie.text!(
                     plot.axis,
                     1,                          # x
-                    cum + val/2,                # center of segment
+                    cum + val / 2;                # center of segment
                     text = string(val),
-                    align = (:center, :center)
+                    align = (:center, :center),
                 )
                 cum += val
             end
@@ -252,7 +260,12 @@ function PowerGraphics._dataframe_plots_internal(
     return plot
 end
 
-function PowerGraphics.save_plot(plot::CairoMakiePlot, filename::String, backend::PowerGraphics.CairoMakieBackend; kwargs...)
+function PowerGraphics.save_plot(
+    plot::CairoMakiePlot,
+    filename::String,
+    backend::PowerGraphics.CairoMakieBackend;
+    kwargs...,
+)
     CairoMakie.save(filename, plot.figure)
     @info "saved plot" filename
     return filename
