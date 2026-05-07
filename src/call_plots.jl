@@ -617,7 +617,7 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     gen = PA.get_generation_data(result; kwargs...)
     sys = PA.PSI.get_system(result)
     if sys === nothing
-        throw(error("No System data present: please run `set_system!(results, sys)`"))
+        throw(ArgumentError("No System data present: please run `set_system!(results, sys)`"))
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
     fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
@@ -701,7 +701,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     gen = PA.get_generation_data(result; kwargs...)
     sys = PA.PSI.get_system(result)
     if sys === nothing
-        throw(error("No System data present: please run `set_system!(results, sys)`"))
+        throw(ArgumentError("No System data present: please run `set_system!(results, sys)`"))
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
     fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
