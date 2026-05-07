@@ -10,6 +10,39 @@ function popkwargs(kwargs, kwarg)
     return Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
 end
 
+# Translation table for the user-facing `aggregate::String` kwarg of
+# `plot_demand` to the typed `aggregation::Type` kwarg expected by
+# `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
+# `IS.Results` branch of `get_load_data` ignores `aggregation` entirely, so
+# the translation is a safe no-op there.
+const _AGGREGATE_STRING_TO_TYPE = Dict(
+    "System" => PSY.System,
+    "Bus" => PSY.ACBus,
+    "PowerLoad" => PSY.PowerLoad,
+)
+
+function _aggregate_to_type(s::AbstractString)
+    haskey(_AGGREGATE_STRING_TO_TYPE, s) || throw(
+        ArgumentError(
+            "Unknown `aggregate` value $(repr(s)). " *
+            "Valid options: $(collect(keys(_AGGREGATE_STRING_TO_TYPE))).",
+        ),
+    )
+    return _AGGREGATE_STRING_TO_TYPE[s]
+end
+
+# Translate `:aggregate => "System" | "Bus" | "PowerLoad"` (if present) into
+# the typed `:aggregation` kwarg PowerAnalytics expects. Returns a fresh
+# `Dict{Symbol,Any}` regardless so callers can keep mutating it.
+function _translate_demand_aggregate(kwargs)
+    out = Dict{Symbol,Any}(kwargs)
+    if haskey(out, :aggregate) && out[:aggregate] isa AbstractString
+        out[:aggregation] = _aggregate_to_type(out[:aggregate])
+        delete!(out, :aggregate)
+    end
+    return out
+end
+
 function _make_ylabel(
     base_power::Float64;
     variable::String = "Generation",
@@ -122,6 +155,9 @@ function plot_demand!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
+    # Translate the user-facing `aggregate::String` kwarg into PA's typed
+    # `aggregation` kwarg before calling `get_load_data`.
+    kwargs = _translate_demand_aggregate(kwargs)
     load = PA.get_load_data(result; kwargs...)
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
@@ -167,6 +203,9 @@ function plot_demand_plotly!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
+    # Translate the user-facing `aggregate::String` kwarg into PA's typed
+    # `aggregation` kwarg before calling `get_load_data`.
+    kwargs = _translate_demand_aggregate(kwargs)
     load = PA.get_load_data(result; kwargs...)
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
