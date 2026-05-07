@@ -24,7 +24,7 @@ Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
 [extensions]
 CairoMakieExt = "CairoMakie"
 PlotlyLightExt = "PlotlyLight"
-WeaveExt = "Weave"
+WeaveExt = ["PlotlyLight", "Weave"]
 
 [compat]
 CSV = "~0.9, 0.10"
