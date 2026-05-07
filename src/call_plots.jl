@@ -7,7 +7,7 @@ function _empty_plot_plotly()
 end
 
 function popkwargs(kwargs, kwarg)
-    return Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
+    return Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
 end
 
 function _make_ylabel(
@@ -68,11 +68,11 @@ plot = plot_demand(res)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """  # ^ temporary workaround for https://github.com/Sienna-Platform/PowerSystems.jl/issues/1598
 
-function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand(result::Union{IS.Results,PSY.System}; kwargs...)
     return plot_demand!(_empty_plot(), result; kwargs...)
 end
 
-function plot_demand_plotly(result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand_plotly(result::Union{IS.Results,PSY.System}; kwargs...)
     return plot_demand_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
@@ -113,7 +113,7 @@ Plots the demand in the system.
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
 """
-function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
@@ -159,7 +159,7 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     return p
 end
 
-function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand_plotly!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
@@ -249,7 +249,7 @@ function plot_dataframe(df::DataFrames.DataFrame; kwargs...)
 end
 function plot_dataframe(
     df::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    time_range::Union{DataFrames.DataFrame,Array,StepRange};
     kwargs...,
 )
     return plot_dataframe!(_empty_plot(), df, time_range; kwargs...)
@@ -265,7 +265,7 @@ function plot_dataframe_plotly(df::DataFrames.DataFrame; kwargs...)
 end
 function plot_dataframe_plotly(
     df::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    time_range::Union{DataFrames.DataFrame,Array,StepRange};
     kwargs...,
 )
     return plot_dataframe_plotly!(_empty_plot_plotly(), df, time_range; kwargs...)
@@ -307,7 +307,7 @@ end
 function plot_dataframe!(
     p,
     variable::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    time_range::Union{DataFrames.DataFrame,Array,StepRange};
     kwargs...,
 )
     time_range =
@@ -323,7 +323,7 @@ end
 function plot_dataframe_plotly!(
     p,
     variable::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    time_range::Union{DataFrames.DataFrame,Array,StepRange};
     kwargs...,
 )
     time_range =
@@ -408,7 +408,7 @@ function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
         data = powerdata.data
     end
     kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+        Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
     p = plot_dataframe!(p, data, powerdata.time; set_display = false, kwargs...)
 
@@ -436,7 +436,7 @@ function plot_powerdata_plotly!(p, powerdata::PA.PowerData; kwargs...)
         data = powerdata.data
     end
     kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+        Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
     p = plot_dataframe_plotly!(p, data, powerdata.time; set_display = false, kwargs...)
 
@@ -476,11 +476,11 @@ Makes a plot from a results dictionary object
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
-function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
+function plot_results(results::Dict{String,DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(_empty_plot(), PA.PowerData(results); kwargs...)
 end
 
-function plot_results_plotly(results::Dict{String, DataFrames.DataFrame}; kwargs...)
+function plot_results_plotly(results::Dict{String,DataFrames.DataFrame}; kwargs...)
     return plot_powerdata_plotly!(_empty_plot_plotly(), PA.PowerData(results); kwargs...)
 end
 
@@ -510,11 +510,11 @@ Makes a plot from a results dictionary
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
-function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
+function plot_results!(p, results::Dict{String,DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(p, PA.PowerData(results); kwargs...)
 end
 
-function plot_results_plotly!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
+function plot_results_plotly!(p, results::Dict{String,DataFrames.DataFrame}; kwargs...)
     return plot_powerdata_plotly!(p, PA.PowerData(results); kwargs...)
 end
 
@@ -611,7 +611,7 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     bar = get(kwargs, :bar, false)
     palette = get(kwargs, :palette, PALETTE)
     kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+        Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
     # Generation stack
     gen = PA.get_generation_data(result; kwargs...)
@@ -629,18 +629,14 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     palette_categories = get_palette_category(palette)
     matched = intersect(palette_categories, keys(fuel))
     unmatched = setdiff(keys(fuel), palette_categories)
-    fuel_agg = PA.combine_categories(
-        fuel;
-        names = vcat(matched, sort(collect(unmatched))),
-    )
+    fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
-    seriescolor =
-        get(
-            kwargs,
-            :seriescolor,
-            match_fuel_colors(fuel_agg, CairoMakieBackend(); palette = palette),
-        )
+    seriescolor = get(
+        kwargs,
+        :seriescolor,
+        match_fuel_colors(fuel_agg, CairoMakieBackend(); palette = palette),
+    )
     p = plot_dataframe!(
         p,
         fuel_agg,
@@ -699,7 +695,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     bar = get(kwargs, :bar, false)
     palette = get(kwargs, :palette, PALETTE)
     kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+        Dict{Symbol,Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
     # Generation stack
     gen = PA.get_generation_data(result; kwargs...)
@@ -717,18 +713,14 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     palette_categories = get_palette_category(palette)
     matched = intersect(palette_categories, keys(fuel))
     unmatched = setdiff(keys(fuel), palette_categories)
-    fuel_agg = PA.combine_categories(
-        fuel;
-        names = vcat(matched, sort(collect(unmatched))),
-    )
+    fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
 
-    seriescolor =
-        get(
-            kwargs,
-            :seriescolor,
-            match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette),
-        )
+    seriescolor = get(
+        kwargs,
+        :seriescolor,
+        match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette),
+    )
     p = plot_dataframe_plotly!(
         p,
         fuel_agg,
