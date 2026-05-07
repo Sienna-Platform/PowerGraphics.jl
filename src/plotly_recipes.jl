@@ -19,7 +19,7 @@ function _dataframe_plots_internal(
         set_seriescolor(
             get(kwargs, :seriescolor, get_palette_plotly(get(kwargs, :palette, PALETTE))),
             vcat(ones(plot_length), names),
-        )[(plot_length + 1):end],
+        )[(plot_length+1):end],
     )
 
     save_fig = get(kwargs, :save, nothing)
@@ -68,7 +68,7 @@ function _dataframe_plots_internal(
     plot_kwargs[:line_dash] = get(kwargs, :line_dash, "solid")
     plot_kwargs[:showlegend] = true
 
-    for ix in 1:length(names)
+    for ix = 1:length(names)
         if bar
             plot_kwargs[:marker_color] = seriescolor[ix]
         end
@@ -94,7 +94,7 @@ function _dataframe_plots_internal(
         trace = Plots.PlotlyJS.scatter(; y = plot_data[:, ix], plot_kwargs...)
         push!(traces, trace)
     end
-    layout_kwargs = Dict{Symbol, Any}()
+    layout_kwargs = Dict{Symbol,Any}()
     layout_kwargs[:yaxis] =
         Plots.PlotlyJS.attr(; showticklabels = true, rangemode = "tozero", title = y_label)
     layout_kwargs[:xaxis] =
@@ -114,9 +114,8 @@ function _dataframe_plots_internal(
 end
 
 function save_plot(plot, filename::String, backend::Plots.PlotlyJSBackend; kwargs...) # this needs to be typed but Plots.PlotlyJS.Plot doesn't exist until PlotlyJS is loaded
-    save_kwargs = Dict{Symbol, Any}((
-        (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
-    ))
+    save_kwargs =
+        Dict{Symbol,Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
     @info "saving plot" filename
     if last(splitext(filename)) == ".html"
         open(filename, "w") do io

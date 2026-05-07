@@ -23,3 +23,6 @@ TestSetExtensions = "98d24dd4-01ad-11ea-1b02-c9a08f80db04"
 TimeSeries = "9e3dc215-6440-5c97-bce1-76c03772f85e"
 Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
 YAML = "ddb6d928-2868-570f-bddf-ab3f9cf99eb6"
+
+[compat]
+InfrastructureSystems = "3.0, 3.1, 3.2, 3.3"
