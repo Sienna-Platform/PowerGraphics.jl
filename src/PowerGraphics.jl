@@ -73,5 +73,19 @@ function set_seriescolor(seriescolor::Array, vars::Array)
     return colors
 end
 
+const _CAIROMAKIE_PKGID =
+    Base.PkgId(Base.UUID("13f3f980-e62b-5c42-98c6-ff1f3baf88f0"), "CairoMakie")
+const _PLOTLYLIGHT_PKGID =
+    Base.PkgId(Base.UUID("ca7969ec-10b3-423e-8d99-40f33abb42bf"), "PlotlyLight")
+
+function __init__()
+    has_makie = haskey(Base.loaded_modules, _CAIROMAKIE_PKGID)
+    has_plotly = haskey(Base.loaded_modules, _PLOTLYLIGHT_PKGID)
+    if !(has_makie || has_plotly)
+        @warn "PowerGraphics: no plotting backend loaded. Run " *
+              "`using CairoMakie` or `using PlotlyLight` before calling " *
+              "PowerGraphics plot functions."
+    end
+end
 
 end #module
