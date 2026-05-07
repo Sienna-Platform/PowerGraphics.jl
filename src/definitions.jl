@@ -104,8 +104,6 @@ function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
     return get_palette_plotly(palette)
 end
 
-const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
-
 function match_fuel_colors(
     data::DataFrames.DataFrame,
     backend::CairoMakieBackend;
