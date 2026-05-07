@@ -129,11 +129,8 @@ function plot_demand!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     kwargs[:linestyle] = Symbol(linestyle)
     kwargs[:line_dash] = string(linestyle)
     kwargs[:linewidth] = get(kwargs, :linewidth, 1)
-    kwargs[:seriescolor] = get(
-        kwargs,
-        :seriescolor,
-        get_palette_seriescolor(CairoMakieBackend(), palette),
-    )
+    kwargs[:seriescolor] =
+        get(kwargs, :seriescolor, get_palette_seriescolor(CairoMakieBackend(), palette))
 
     load_agg = PA.combine_categories(load.data)
 
@@ -177,11 +174,8 @@ function plot_demand_plotly!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     kwargs[:linestyle] = Symbol(linestyle)
     kwargs[:line_dash] = string(linestyle)
     kwargs[:linewidth] = get(kwargs, :linewidth, 1)
-    kwargs[:seriescolor] = get(
-        kwargs,
-        :seriescolor,
-        get_palette_seriescolor(PlotlyLightBackend(), palette),
-    )
+    kwargs[:seriescolor] =
+        get(kwargs, :seriescolor, get_palette_seriescolor(PlotlyLightBackend(), palette))
 
     load_agg = PA.combine_categories(load.data)
 
@@ -621,7 +615,9 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     gen = PA.get_generation_data(result; kwargs...)
     sys = PA.PSI.get_system(result)
     if sys === nothing
-        throw(ArgumentError("No System data present: please run `set_system!(results, sys)`"))
+        throw(
+            ArgumentError("No System data present: please run `set_system!(results, sys)`"),
+        )
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
     fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
@@ -705,7 +701,9 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     gen = PA.get_generation_data(result; kwargs...)
     sys = PA.PSI.get_system(result)
     if sys === nothing
-        throw(ArgumentError("No System data present: please run `set_system!(results, sys)`"))
+        throw(
+            ArgumentError("No System data present: please run `set_system!(results, sys)`"),
+        )
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
     fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
