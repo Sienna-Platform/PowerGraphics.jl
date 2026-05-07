@@ -117,14 +117,24 @@ function plot_demand!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
-    linestyle = get(kwargs, :linestyle, :solid)
 
     title = get(kwargs, :title, "Demand")
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
     load = PA.get_load_data(result; kwargs...)
+    # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
+    linestyle = get(kwargs, :linestyle, :solid)
+    kwargs[:linestyle] = Symbol(linestyle)
+    kwargs[:line_dash] = string(linestyle)
+    kwargs[:linewidth] = get(kwargs, :linewidth, 1)
+    kwargs[:seriescolor] = get(
+        kwargs,
+        :seriescolor,
+        get_palette_seriescolor(CairoMakieBackend(), palette),
+    )
+
     load_agg = PA.combine_categories(load.data)
 
     if isnothing(load_agg)
@@ -135,14 +145,6 @@ function plot_demand!(p, result::Union{IS.Results,PSY.System}; kwargs...)
         p,
         load_agg,
         load.time;
-        seriescolor = get(
-            kwargs,
-            :seriescolor,
-            get_palette_seriescolor(CairoMakieBackend(), palette),
-        ),
-        linestyle = Symbol(linestyle),
-        line_dash = string(linestyle),
-        linewidth = get(kwargs, :linewidth, 1),
         y_label = y_label,
         set_display = false,
         title = title,
@@ -163,14 +165,24 @@ function plot_demand_plotly!(p, result::Union{IS.Results,PSY.System}; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
-    linestyle = get(kwargs, :linestyle, :solid)
 
     title = get(kwargs, :title, "Demand")
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
     load = PA.get_load_data(result; kwargs...)
+    # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
+    linestyle = get(kwargs, :linestyle, :solid)
+    kwargs[:linestyle] = Symbol(linestyle)
+    kwargs[:line_dash] = string(linestyle)
+    kwargs[:linewidth] = get(kwargs, :linewidth, 1)
+    kwargs[:seriescolor] = get(
+        kwargs,
+        :seriescolor,
+        get_palette_seriescolor(PlotlyLightBackend(), palette),
+    )
+
     load_agg = PA.combine_categories(load.data)
 
     if isnothing(load_agg)
@@ -181,14 +193,6 @@ function plot_demand_plotly!(p, result::Union{IS.Results,PSY.System}; kwargs...)
         p,
         load_agg,
         load.time;
-        seriescolor = get(
-            kwargs,
-            :seriescolor,
-            get_palette_seriescolor(PlotlyLightBackend(), palette),
-        ),
-        linestyle = Symbol(linestyle),
-        line_dash = string(linestyle),
-        linewidth = get(kwargs, :linewidth, 1),
         y_label = y_label,
         set_display = false,
         title = title,
