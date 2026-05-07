@@ -15,7 +15,7 @@ function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
 end
 
 function PowerGraphics._dataframe_plots_internal(
-    plot::Union{CairoMakiePlot, Nothing},
+    plot::Union{CairoMakiePlot,Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
     backend::PowerGraphics.CairoMakieBackend;
@@ -30,10 +30,9 @@ function PowerGraphics._dataframe_plots_internal(
     stair = get(kwargs, :stair, false)
     label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
-    time_interval =
-        PowerGraphics.IS.convert_compound_period(
-            length(time_range) * (time_range[2] - time_range[1]),
-        )
+    time_interval = PowerGraphics.IS.convert_compound_period(
+        length(time_range) * (time_range[2] - time_range[1]),
+    )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -52,7 +51,7 @@ function PowerGraphics._dataframe_plots_internal(
             ),
         ),
         vcat(ones(existing_series), DataFrames.names(variable)),
-    )[(existing_series + 1):end]
+    )[(existing_series+1):end]
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
@@ -124,7 +123,7 @@ function PowerGraphics._dataframe_plots_internal(
         if stack && !nofill
             # Stacked area plot
             cumulative = zeros(length(time_range_float))
-            for ix in 1:length(labels)
+            for ix = 1:length(labels)
                 upper = cumulative .+ data[:, ix]
                 color = seriescolor[ix]
 
@@ -158,19 +157,14 @@ function PowerGraphics._dataframe_plots_internal(
                         label = string(labels[ix]),
                     )
                     # Add line on top for better visibility
-                    CairoMakie.lines!(
-                        plot.axis,
-                        time_range_float,
-                        upper;
-                        color = color,
-                    )
+                    CairoMakie.lines!(plot.axis, time_range_float, upper; color = color)
                 end
                 cumulative = upper
             end
         elseif stack && nofill
             # Stacked lines without fill
             cumulative = zeros(length(time_range_float))
-            for ix in 1:length(labels)
+            for ix = 1:length(labels)
                 cumulative .+= data[:, ix]
                 color = seriescolor[ix]
                 if stair
@@ -194,7 +188,7 @@ function PowerGraphics._dataframe_plots_internal(
             end
         else
             # Regular line plot (no stacking)
-            for ix in 1:length(labels)
+            for ix = 1:length(labels)
                 color = seriescolor[ix]
                 plot_func = stair ? CairoMakie.stairs! : CairoMakie.lines!
                 plot_kwargs = Dict(:color => color, :label => string(labels[ix]))
@@ -230,14 +224,15 @@ function PowerGraphics._dataframe_plots_internal(
 
         legend_position = get(kwargs, :legend_position, :right)
         legend_font_size = get(kwargs, :legend_font_size, nothing)
-        legend_kwargs = Dict{Symbol, Any}()
+        legend_kwargs = Dict{Symbol,Any}()
         if !isnothing(legend_font_size)
             legend_kwargs[:labelsize] = legend_font_size
         end
 
         if legend_position == :bottom
             CairoMakie.Legend(
-                plot.figure[2, 1], plot.axis;
+                plot.figure[2, 1],
+                plot.axis;
                 orientation = :horizontal,
                 tellwidth = false,
                 tellheight = true,

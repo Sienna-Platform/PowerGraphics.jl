@@ -33,13 +33,12 @@ function PowerGraphics._dataframe_plots_internal(
                 ),
             ),
             vcat(ones(plot_length), names),
-        )[(plot_length + 1):end],
+        )[(plot_length+1):end],
     )
 
-    time_interval =
-        PowerGraphics.IS.convert_compound_period(
-            length(time_range) * (time_range[2] - time_range[1]),
-        )
+    time_interval = PowerGraphics.IS.convert_compound_period(
+        length(time_range) * (time_range[2] - time_range[1]),
+    )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
@@ -62,7 +61,7 @@ function PowerGraphics._dataframe_plots_internal(
             # Line plot for bar with nofill
             plot_data = [plot_data; plot_data]
             x_data = [-0.5, 0.5]
-            for ix in 1:length(names)
+            for ix = 1:length(names)
                 y_data = plot_data[:, ix]
                 sign_group = sum(y_data) >= 0 ? 0 : 10
 
@@ -89,7 +88,7 @@ function PowerGraphics._dataframe_plots_internal(
             end
         else
             # Regular bar plot
-            for ix in 1:length(names)
+            for ix = 1:length(names)
                 y_data = vec(plot_data[:, ix])
                 sign_group = sum(y_data) >= 0 ? 0 : 10
 
@@ -111,7 +110,7 @@ function PowerGraphics._dataframe_plots_internal(
         end
     else
         # Scatter plot
-        for ix in 1:length(names)
+        for ix = 1:length(names)
             data_to_plot = plot_data[:, ix]
             sign_group = sum(data_to_plot) >= 0 ? 0 : 10
 
@@ -189,9 +188,8 @@ function PowerGraphics.save_plot(
     backend::PowerGraphics.PlotlyLightBackend;
     kwargs...,
 )
-    save_kwargs = Dict{Symbol, Any}((
-        (k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS
-    ))
+    save_kwargs =
+        Dict{Symbol,Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
     @info "saving plot" filename
     if last(splitext(filename)) == ".html"
         open(filename, "w") do io
