@@ -55,7 +55,7 @@ plot = plot_demand(res)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -100,7 +100,7 @@ Plots the demand in the system.
     rather than by generator
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -128,7 +128,7 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     load_agg = PA.combine_categories(load.data)
 
     if isnothing(load_agg)
-        Throw(error("No load data found"))
+        throw(ErrorException("No load data found"))
     end
 
     p = plot_dataframe!(
@@ -174,7 +174,7 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
     load_agg = PA.combine_categories(load.data)
 
     if isnothing(load_agg)
-        Throw(error("No load data found"))
+        throw(ErrorException("No load data found"))
     end
 
     p = plot_dataframe_plotly!(
@@ -233,7 +233,7 @@ plot = plot_dataframe(df, time_range)
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -289,7 +289,7 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -349,7 +349,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -384,7 +384,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -465,7 +465,7 @@ Makes a plot from a results dictionary object
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -499,7 +499,7 @@ Makes a plot from a results dictionary
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -546,7 +546,7 @@ plot = plot_fuel(res)
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
@@ -587,7 +587,7 @@ and assigns each fuel type a specific color.
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: set a different format for saving a [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) plot. Options include "png", "pdf" and "eps"
+- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces

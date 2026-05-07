@@ -248,7 +248,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             set_display = set_display,
             title = "sysdemand",
             save = out_path,
-            aggregation = System,
+            aggregate = "System",
         )
         plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
         @test plot_length == 1
@@ -258,7 +258,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             set_display = set_display,
             title = "sysdemand_bus",
             save = out_path,
-            aggregation = ACBus,
+            aggregate = "Bus",
         )
         plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
         @test plot_length == 3

@@ -19,42 +19,28 @@ julia> ]
 
 `PowerGraphics.jl` uses [PowerSystems.jl](https://github.com/Sienna-Platform/PowerSystems.jl) and [PowerSimulations.jl](https://github.com/Sienna-Platform/PowerSimulations.jl) to handle the data and execution power system simulations.
 
+`PowerGraphics.jl` supports two plotting backends, both loaded via Julia
+package extensions. Load the backend you want **before** (or alongside)
+`PowerGraphics`:
+
+  - [CairoMakie](https://docs.makie.org/stable/) (recommended): static,
+    publication-quality plots — `using CairoMakie`
+  - [PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl):
+    lightweight interactive HTML plots — `using PlotlyLight`
+
 ```julia
+using CairoMakie     # or `using PlotlyLight`
 using PowerGraphics
 using PowerAnalytics
-# where "res" is a PowerSimulations.SimulationResults object
+
+# where `res` is a PowerSimulations.SimulationResults object
 gen = get_generation_data(res)
-plot_powerdata(gen)
+plot_powerdata(gen)        # CairoMakie
+# plot_powerdata_plotly(gen)  # PlotlyLight (`_plotly`-suffixed API)
 ```
 
-`PowerGraphics.jl` creates figures using a number of optional backends using `Plots.jl`. For interactive figures, it is recommended to use the `PlotlyLight.jl` backend, which requires the `PlotlyLight.jl`:
-
-```julia
-using Pkg
-Pkg.add("PlotlyLight")
-```
-
-Backends are loaded as package extensions, so the user must explicitly load whichever backend they plan to use. E.g.:
-
-```julia
-using CairoMakie
-using PowerGraphics
-```
-
-When using `PowerGraphics.jl` within a jupyter notebook, `WebIO.jl` is also required:
-
-```julia
-Pkg.add("WebIO")
-```
-
-An additional command (`plotlylight()`) to startup the `PlotlyLight` backend from `Plots` is required:
-
-```julia
-using PowerGraphics
-plotlylight()
-# where "res" is a PowerSimulations.SimulationResults object
-plot_fuel(res)
-```
+If neither backend is loaded, `PowerGraphics.jl` prints a warning at load
+time and the plotting functions throw an `ArgumentError` when called.
 
 ## Development
 

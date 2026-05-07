@@ -6,7 +6,6 @@ using Literate
 
 
 links = InterLinks(
-    "Plots" => "https://docs.juliaplots.org/stable/",
     "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
     "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
     "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",

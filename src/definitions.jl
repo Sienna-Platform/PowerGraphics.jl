@@ -16,7 +16,7 @@ end
 function PaletteColor(category::String, RGB::String, order::Int64)
     rgba =
         parse.(Int64, strip.(split(strip(RGB, ['r', 'g', 'b', 'a', '(', ')', ' ']), ",")))
-    color = Colors.RGBA(rgba[1] / 288, rgba[2] / 288, rgba[3] / 288, rgba[4])
+    color = Colors.RGBA(rgba[1] / 255, rgba[2] / 255, rgba[3] / 255, rgba[4])
     return PaletteColor(category, RGB, color, order)
 end
 

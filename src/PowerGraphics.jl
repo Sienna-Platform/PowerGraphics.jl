@@ -38,8 +38,31 @@ include("definitions.jl")
 include("label_utils.jl")
 include("call_plots.jl")
 
-function _dataframe_plots_internal()
-    @error "Either CairoMakie or PlotlyLight required."
+# Methods for these are provided by package extensions:
+#   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt
+#   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend; kwargs...)` — same
+#   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
+#   - `report(results, out_path, template; kwargs...)` — WeaveExt
+function report end
+
+function _no_backend_loaded()
+    throw(
+        ArgumentError(
+            "No plotting backend loaded. Run `using CairoMakie` or " *
+            "`using PlotlyLight` before calling PowerGraphics plot functions.",
+        ),
+    )
+end
+
+_empty_plot(::PlottingBackend) = _no_backend_loaded()
+function _dataframe_plots_internal(
+    ::Any,
+    ::DataFrames.DataFrame,
+    ::Any,
+    ::PlottingBackend;
+    kwargs...,
+)
+    return _no_backend_loaded()
 end
 
 function set_seriescolor(seriescolor::Array, vars::Array)
