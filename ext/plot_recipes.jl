@@ -29,6 +29,8 @@ function PowerGraphics._dataframe_plots_internal(
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
     label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
+    linestyle = get(kwargs, :linestyle, :solid)
+    linewidth = get(kwargs, :linewidth, 1)
 
     time_interval = PowerGraphics.IS.convert_compound_period(
         length(time_range) * (time_range[2] - time_range[1]),
@@ -78,27 +80,21 @@ function PowerGraphics._dataframe_plots_internal(
         plot_data = sum(data; dims = 1) ./ interval
 
         if stack
-            for (i, label) in enumerate(labels)
-                CairoMakie.barplot!(
-                    plot.axis,
-                    [1],                        # x position
-                    [plot_data[i]];             # height
-                    stack = [1],                # same stack group
-                    color = seriescolor[i],
-                    label = string(label),                 # legend label
-                )
-            end
-            cum = 0
-            for (i, val) in enumerate(plot_data)
-                CairoMakie.text!(
-                    plot.axis,
-                    1,                          # x
-                    cum + val / 2;                # center of segment
-                    text = string(val),
-                    align = (:center, :center),
-                )
-                cum += val
-            end
+            # CairoMakie stacks within a single barplot! call when given
+            # per-element stack ids. Plotting one slice per call (each with
+            # stack=[1]) just overlays bars at the same x — that's what the
+            # previous implementation did and it did not actually stack.
+            n = length(labels)
+            xs = fill(1, n)
+            heights = vec(plot_data)
+            CairoMakie.barplot!(
+                plot.axis,
+                xs,
+                heights;
+                stack = collect(1:n),
+                color = collect(seriescolor[1:n]),
+                label = string.(labels),
+            )
 
             # Set x-axis to show single bar
             plot.axis.xticks = ([1], [""])
@@ -137,6 +133,8 @@ function PowerGraphics._dataframe_plots_internal(
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
+                        linestyle = linestyle,
+                        linewidth = linewidth,
                     )
                     # Add band for fill
                     CairoMakie.band!(
@@ -157,7 +155,14 @@ function PowerGraphics._dataframe_plots_internal(
                         label = string(labels[ix]),
                     )
                     # Add line on top for better visibility
-                    CairoMakie.lines!(plot.axis, time_range_float, upper; color = color)
+                    CairoMakie.lines!(
+                        plot.axis,
+                        time_range_float,
+                        upper;
+                        color = color,
+                        linestyle = linestyle,
+                        linewidth = linewidth,
+                    )
                 end
                 cumulative = upper
             end
@@ -175,6 +180,8 @@ function PowerGraphics._dataframe_plots_internal(
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
+                        linestyle = linestyle,
+                        linewidth = linewidth,
                     )
                 else
                     CairoMakie.lines!(
@@ -183,6 +190,8 @@ function PowerGraphics._dataframe_plots_internal(
                         cumulative;
                         color = color,
                         label = string(labels[ix]),
+                        linestyle = linestyle,
+                        linewidth = linewidth,
                     )
                 end
             end
@@ -191,7 +200,12 @@ function PowerGraphics._dataframe_plots_internal(
             for ix = 1:length(labels)
                 color = seriescolor[ix]
                 plot_func = stair ? CairoMakie.stairs! : CairoMakie.lines!
-                plot_kwargs = Dict(:color => color, :label => string(labels[ix]))
+                plot_kwargs = Dict(
+                    :color => color,
+                    :label => string(labels[ix]),
+                    :linestyle => linestyle,
+                    :linewidth => linewidth,
+                )
                 if stair
                     plot_kwargs[:step] = :post
                 end
@@ -214,11 +228,12 @@ function PowerGraphics._dataframe_plots_internal(
     # Delete old legend if it exists, then create a new one
     if plot.series_count > 0
         if plot.has_legend
-            # Remove the old legend before creating a new one
-            for elem in plot.figure.content
-                if elem isa CairoMakie.Legend
-                    delete!(elem)
-                end
+            # Collect first, then delete — calling `delete!` on a Legend
+            # mutates `plot.figure.content`, so iterating it directly is unsafe.
+            old_legends =
+                [elem for elem in plot.figure.content if elem isa CairoMakie.Legend]
+            for elem in old_legends
+                delete!(elem)
             end
         end
 
@@ -261,6 +276,16 @@ function PowerGraphics.save_plot(
     backend::PowerGraphics.CairoMakieBackend;
     kwargs...,
 )
+    ext = lowercase(last(splitext(filename)))
+    if ext == ".html"
+        throw(
+            ArgumentError(
+                "HTML output is not supported by the CairoMakie backend; " *
+                "use a `_plotly` plot function (which uses PlotlyLight) or " *
+                "choose a raster/vector format such as png, pdf, or svg.",
+            ),
+        )
+    end
     CairoMakie.save(filename, plot.figure)
     @info "saved plot" filename
     return filename
