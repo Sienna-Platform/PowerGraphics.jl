@@ -11,7 +11,7 @@ function _empty_plot(backend)
 end
 
 function _dataframe_plots_internal(
-    plot::Union{Plots.Plot,Nothing},
+    plot::Union{Plots.Plot, Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
     backend;
@@ -22,7 +22,7 @@ function _dataframe_plots_internal(
         set_seriescolor(
             get(kwargs, :seriescolor, get_palette_gr(get(kwargs, :palette, PALETTE))),
             vcat(existing_colors, DataFrames.names(variable)),
-        )[(length(existing_colors)+1):end],
+        )[(length(existing_colors) + 1):end],
     )
 
     save_fig = get(kwargs, :save, nothing)
@@ -38,7 +38,7 @@ function _dataframe_plots_internal(
 
     isnothing(plot) && _empty_plot()
     plot_kwargs =
-        Dict{Symbol,Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_EXTRA_PLOT_KWARGS))
+        Dict{Symbol, Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_EXTRA_PLOT_KWARGS))
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"

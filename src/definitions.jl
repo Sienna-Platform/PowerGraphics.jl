@@ -123,7 +123,7 @@ function match_fuel_colors(data::DataFrames.DataFrame, backend; palette = PALETT
     names = DataFrames.names(data)
     default =
         [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
-    for i = 2:length(names)
+    for i in 2:length(names)
         @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
             :,
             :colors,
