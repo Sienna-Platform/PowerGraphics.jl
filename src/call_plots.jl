@@ -794,7 +794,7 @@ plot = plot_fuel(res)
 save_plot(plot, "my_plot.png")
 ```
 
-# Accepted Key Words (currently only implemented for [PlotlyJS](@extref Plots [Plotly-/-PlotlyJS](https://github.com/spencerlyon2/PlotlyJS.jl)) backend)
+# Accepted Key Words (PlotlyLight backend only; CairoMakie ignores them)
 - `width::Union{Nothing,Int}=nothing`
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
@@ -803,7 +803,7 @@ function save_plot(plot, filename::String; kwargs...)
     return save_plot(plot, filename, CairoMakieBackend(); kwargs...)
 end
 
-# For PlotlyJS plots (no specific type, handled generically)
+# Convenience wrapper that dispatches to the PlotlyLight backend.
 function save_plot_plotly(plot, filename::String; kwargs...)
     return save_plot(plot, filename, PlotlyLightBackend(); kwargs...)
 end
