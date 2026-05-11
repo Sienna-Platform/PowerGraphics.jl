@@ -28,7 +28,6 @@ import PowerSystems
 import InfrastructureSystems
 import InteractiveUtils
 import PowerAnalytics
-import CairoMakie
 
 const PSY = PowerSystems
 const IS = InfrastructureSystems
@@ -39,6 +38,33 @@ include("definitions.jl")
 include("label_utils.jl")
 include("call_plots.jl")
 
+# Methods for these are provided by package extensions:
+#   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt
+#   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend; kwargs...)` — same
+#   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
+#   - `report(results, out_path, template; kwargs...)` — WeaveExt
+function report end
+
+function _no_backend_loaded()
+    throw(
+        ArgumentError(
+            "No plotting backend loaded. Run `using CairoMakie` or " *
+            "`using PlotlyLight` before calling PowerGraphics plot functions.",
+        ),
+    )
+end
+
+_empty_plot(::PlottingBackend) = _no_backend_loaded()
+function _dataframe_plots_internal(
+    ::Any,
+    ::DataFrames.DataFrame,
+    ::Any,
+    ::PlottingBackend;
+    kwargs...,
+)
+    return _no_backend_loaded()
+end
+
 function set_seriescolor(seriescolor::Array, vars::Array)
     color_length = length(seriescolor)
     var_length = length(vars)
@@ -47,37 +73,19 @@ function set_seriescolor(seriescolor::Array, vars::Array)
     return colors
 end
 
-include("plot_recipes.jl")
+const _CAIROMAKIE_PKGID =
+    Base.PkgId(Base.UUID("13f3f980-e62b-5c42-98c6-ff1f3baf88f0"), "CairoMakie")
+const _PLOTLYLIGHT_PKGID =
+    Base.PkgId(Base.UUID("ca7969ec-10b3-423e-8d99-40f33abb42bf"), "PlotlyLight")
 
-# Methods for these are provided by package extensions:
-#   - `_empty_plot(::PlotlyLightBackend)` — PlotlyLightExt
-#   - `_dataframe_plots_internal(p, df, time, ::PlotlyLightBackend; kwargs...)` — same
-#   - `save_plot(plot, filename, ::PlotlyLightBackend; kwargs...)` — same
-#   - `report(results, out_path, template; kwargs...)` — WeaveExt
-function report end
-
-function _no_plotly_loaded()
-    throw(
-        ArgumentError(
-            "PlotlyLight is not loaded. Run `using PlotlyLight` before calling " *
-            "the `_plotly` PowerGraphics plot functions.",
-        ),
-    )
-end
-
-# Abstract-supertype fallback so PlotlyLightExt's `::PlotlyLightBackend` method
-# wins by specificity once the extension is loaded — and we avoid the
-# "method overwrite during precompilation" error that a same-signature
-# definition would cause.
-_empty_plot(::PlottingBackend) = _no_plotly_loaded()
-function _dataframe_plots_internal(
-    ::Any,
-    ::DataFrames.DataFrame,
-    ::Any,
-    ::PlottingBackend;
-    kwargs...,
-)
-    return _no_plotly_loaded()
+function __init__()
+    has_makie = haskey(Base.loaded_modules, _CAIROMAKIE_PKGID)
+    has_plotly = haskey(Base.loaded_modules, _PLOTLYLIGHT_PKGID)
+    if !(has_makie || has_plotly)
+        @warn "PowerGraphics: no plotting backend loaded. Run " *
+              "`using CairoMakie` or `using PlotlyLight` before calling " *
+              "PowerGraphics plot functions."
+    end
 end
 
 end #module

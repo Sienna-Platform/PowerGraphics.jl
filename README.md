@@ -19,23 +19,28 @@ julia> ]
 
 `PowerGraphics.jl` uses [PowerSystems.jl](https://github.com/Sienna-Platform/PowerSystems.jl) and [PowerSimulations.jl](https://github.com/Sienna-Platform/PowerSimulations.jl) to handle the data and execution power system simulations.
 
-`PowerGraphics.jl` ships with [CairoMakie](https://docs.makie.org/stable/)
-as its default static (publication-quality) plotting backend. For
-interactive HTML plots, additionally load
-[PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl) — a
-PowerGraphics package extension exposes a parallel `_plotly`-suffixed API.
+`PowerGraphics.jl` supports two plotting backends, both loaded via Julia
+package extensions. Load the backend you want **before** (or alongside)
+`PowerGraphics`:
+
+  - [CairoMakie](https://docs.makie.org/stable/) (recommended): static,
+    publication-quality plots — `using CairoMakie`
+  - [PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl):
+    lightweight interactive HTML plots — `using PlotlyLight`
 
 ```julia
+using CairoMakie     # or `using PlotlyLight`
 using PowerGraphics
 using PowerAnalytics
 
 # where `res` is a PowerSimulations.SimulationResults object
 gen = get_generation_data(res)
-plot_powerdata(gen)             # CairoMakie (always available)
-
-using PlotlyLight                # opt-in for interactive HTML
-plot_powerdata_plotly(gen)       # PlotlyLight (`_plotly`-suffixed API)
+plot_powerdata(gen)        # CairoMakie
+# plot_powerdata_plotly(gen)  # PlotlyLight (`_plotly`-suffixed API)
 ```
+
+If neither backend is loaded, `PowerGraphics.jl` prints a warning at load
+time and the plotting functions throw an `ArgumentError` when called.
 
 ## Development
 

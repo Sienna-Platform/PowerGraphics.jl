@@ -8,17 +8,17 @@ mutable struct CairoMakiePlot
     has_legend::Bool  # Track if legend has been created
 end
 
-function _empty_plot(backend::CairoMakieBackend)
+function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
     fig = CairoMakie.Figure()
     ax = CairoMakie.Axis(fig[1, 1])
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
-function _dataframe_plots_internal(
+function PowerGraphics._dataframe_plots_internal(
     plot::Union{CairoMakiePlot, Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::CairoMakieBackend;
+    backend::PowerGraphics.CairoMakieBackend;
     kwargs...,
 )
     # Get plot kwargs
@@ -28,27 +28,29 @@ function _dataframe_plots_internal(
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
-    label_fn = get(kwargs, :label_fn, label_short)
+    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
     linestyle = get(kwargs, :linestyle, :solid)
     linewidth = get(kwargs, :linewidth, 1)
 
-    time_interval = IS.convert_compound_period(
+    time_interval = PowerGraphics.IS.convert_compound_period(
         length(time_range) * (time_range[2] - time_range[1]),
     )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
 
     if isnothing(plot)
-        plot = _empty_plot(backend)
+        plot = PowerGraphics._empty_plot(backend)
     end
 
     # Get colors
     existing_series = plot.series_count
-    seriescolor = set_seriescolor(
+    seriescolor = PowerGraphics.set_seriescolor(
         get(
             kwargs,
             :seriescolor,
-            get_palette_cairomakie(get(kwargs, :palette, PALETTE)),
+            PowerGraphics.get_palette_cairomakie(
+                get(kwargs, :palette, PowerGraphics.PALETTE),
+            ),
         ),
         vcat(ones(existing_series), DataFrames.names(variable)),
     )[(existing_series + 1):end]
@@ -62,8 +64,8 @@ function _dataframe_plots_internal(
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(PA.no_datetime(variable))
-    labels = DataFrames.names(PA.no_datetime(variable))
+    data = Matrix(PowerGraphics.PA.no_datetime(variable))
+    labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
     labels = [label_fn(label) for label in labels]
 
     # Set axis properties
@@ -272,14 +274,19 @@ end
 
 # Two-arg `save_plot` for CairoMakie plots; inferred from the plot type so callers
 # can write `save_plot(p, "out.png")` regardless of which backend produced `p`.
-function save_plot(plot::CairoMakiePlot, filename::String; kwargs...)
-    return save_plot(plot, filename, CairoMakieBackend(); kwargs...)
+function PowerGraphics.save_plot(plot::CairoMakiePlot, filename::String; kwargs...)
+    return PowerGraphics.save_plot(
+        plot,
+        filename,
+        PowerGraphics.CairoMakieBackend();
+        kwargs...,
+    )
 end
 
-function save_plot(
+function PowerGraphics.save_plot(
     plot::CairoMakiePlot,
     filename::String,
-    backend::CairoMakieBackend;
+    backend::PowerGraphics.CairoMakieBackend;
     kwargs...,
 )
     ext = lowercase(last(splitext(filename)))
