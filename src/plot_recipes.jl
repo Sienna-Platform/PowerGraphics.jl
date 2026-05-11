@@ -117,7 +117,7 @@ function _dataframe_plots_internal(
         if stack && !nofill
             # Stacked area plot
             cumulative = zeros(length(time_range_float))
-            for ix = 1:length(labels)
+            for ix in 1:length(labels)
                 upper = cumulative .+ data[:, ix]
                 color = seriescolor[ix]
 
@@ -167,7 +167,7 @@ function _dataframe_plots_internal(
         elseif stack && nofill
             # Stacked lines without fill
             cumulative = zeros(length(time_range_float))
-            for ix = 1:length(labels)
+            for ix in 1:length(labels)
                 cumulative .+= data[:, ix]
                 color = seriescolor[ix]
                 if stair
@@ -195,7 +195,7 @@ function _dataframe_plots_internal(
             end
         else
             # Regular line plot (no stacking)
-            for ix = 1:length(labels)
+            for ix in 1:length(labels)
                 color = seriescolor[ix]
                 plot_func = stair ? CairoMakie.stairs! : CairoMakie.lines!
                 plot_kwargs = Dict(
