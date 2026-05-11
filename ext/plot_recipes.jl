@@ -112,6 +112,11 @@ function PowerGraphics._dataframe_plots_internal(
                 )
             end
             plot.axis.xticks = (collect(x_positions), string.(labels))
+            # Long category labels (e.g. "APV: RenewableDispatch__Curtailment")
+            # overlap when drawn horizontally — rotate 45° and anchor the
+            # top-right corner under each tick.
+            plot.axis.xticklabelrotation = π / 4
+            plot.axis.xticklabelalign = (:right, :top)
         end
         plot.axis.xgridvisible = false
     else
