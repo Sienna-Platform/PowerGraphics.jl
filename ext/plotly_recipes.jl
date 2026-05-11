@@ -20,6 +20,10 @@ function PowerGraphics._dataframe_plots_internal(
     nofill = get(kwargs, :nofill, !bar && !stack)
     label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
+    # Guard before any `plot.data` access — callers may pass `nothing` to ask
+    # for a fresh plot.
+    isnothing(plot) && (plot = PowerGraphics._empty_plot(backend))
+
     names = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
     names = [label_fn(name) for name in names]
     plot_length = length(plot.data)
@@ -33,7 +37,7 @@ function PowerGraphics._dataframe_plots_internal(
                 ),
             ),
             vcat(ones(plot_length), names),
-        )[(plot_length+1):end],
+        )[(plot_length + 1):end],
     )
 
     time_interval = PowerGraphics.IS.convert_compound_period(
@@ -41,8 +45,6 @@ function PowerGraphics._dataframe_plots_internal(
     )
     interval =
         Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
-
-    isnothing(plot) && (plot = _empty_plot(backend))
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
@@ -182,6 +184,17 @@ end
 const SUPPORTED_PLOTLY_SAVE_KWARGS =
     [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
 
+# Two-arg `save_plot` for PlotlyLight plots; inferred from the plot type so
+# callers can write `save_plot(p, "out.html")` and hit the right backend.
+function PowerGraphics.save_plot(plot::PlotlyLight.Plot, filename::String; kwargs...)
+    return PowerGraphics.save_plot(
+        plot,
+        filename,
+        PowerGraphics.PlotlyLightBackend();
+        kwargs...,
+    )
+end
+
 function PowerGraphics.save_plot(
     plot,
     filename::String,
@@ -189,7 +202,7 @@ function PowerGraphics.save_plot(
     kwargs...,
 )
     save_kwargs =
-        Dict{Symbol,Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
+        Dict{Symbol, Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
     @info "saving plot" filename
     if last(splitext(filename)) == ".html"
         open(filename, "w") do io

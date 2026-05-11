@@ -8,17 +8,17 @@ mutable struct CairoMakiePlot
     has_legend::Bool  # Track if legend has been created
 end
 
-function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
+function _empty_plot(backend::CairoMakieBackend)
     fig = CairoMakie.Figure()
     ax = CairoMakie.Axis(fig[1, 1])
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
-function PowerGraphics._dataframe_plots_internal(
-    plot::Union{CairoMakiePlot,Nothing},
+function _dataframe_plots_internal(
+    plot::Union{CairoMakiePlot, Nothing},
     variable::DataFrames.DataFrame,
     time_range::Array,
-    backend::PowerGraphics.CairoMakieBackend;
+    backend::CairoMakieBackend;
     kwargs...,
 )
     # Get plot kwargs
@@ -28,11 +28,11 @@ function PowerGraphics._dataframe_plots_internal(
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
-    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
+    label_fn = get(kwargs, :label_fn, label_short)
     linestyle = get(kwargs, :linestyle, :solid)
     linewidth = get(kwargs, :linewidth, 1)
 
-    time_interval = PowerGraphics.IS.convert_compound_period(
+    time_interval = IS.convert_compound_period(
         length(time_range) * (time_range[2] - time_range[1]),
     )
     interval =
@@ -44,16 +44,14 @@ function PowerGraphics._dataframe_plots_internal(
 
     # Get colors
     existing_series = plot.series_count
-    seriescolor = PowerGraphics.set_seriescolor(
+    seriescolor = set_seriescolor(
         get(
             kwargs,
             :seriescolor,
-            PowerGraphics.get_palette_cairomakie(
-                get(kwargs, :palette, PowerGraphics.PALETTE),
-            ),
+            get_palette_cairomakie(get(kwargs, :palette, PALETTE)),
         ),
         vcat(ones(existing_series), DataFrames.names(variable)),
-    )[(existing_series+1):end]
+    )[(existing_series + 1):end]
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
@@ -64,8 +62,8 @@ function PowerGraphics._dataframe_plots_internal(
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(PowerGraphics.PA.no_datetime(variable))
-    labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
+    data = Matrix(PA.no_datetime(variable))
+    labels = DataFrames.names(PA.no_datetime(variable))
     labels = [label_fn(label) for label in labels]
 
     # Set axis properties
@@ -239,7 +237,7 @@ function PowerGraphics._dataframe_plots_internal(
 
         legend_position = get(kwargs, :legend_position, :right)
         legend_font_size = get(kwargs, :legend_font_size, nothing)
-        legend_kwargs = Dict{Symbol,Any}()
+        legend_kwargs = Dict{Symbol, Any}()
         if !isnothing(legend_font_size)
             legend_kwargs[:labelsize] = legend_font_size
         end
@@ -260,20 +258,28 @@ function PowerGraphics._dataframe_plots_internal(
     end
 
     # Display if requested
-    get(kwargs, :set_display, false) && display(plot.figure)
+    get(kwargs, :set_display, true) && display(plot.figure)
 
     # Save if requested
     title = title == " " ? "dataframe" : title
-    !isnothing(save_fig) &&
-        save_plot(plot, joinpath(save_fig, "$(title).png"), backend; kwargs...)
+    if !isnothing(save_fig)
+        format = get(kwargs, :format, "png")
+        save_plot(plot, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    end
 
     return plot
 end
 
-function PowerGraphics.save_plot(
+# Two-arg `save_plot` for CairoMakie plots; inferred from the plot type so callers
+# can write `save_plot(p, "out.png")` regardless of which backend produced `p`.
+function save_plot(plot::CairoMakiePlot, filename::String; kwargs...)
+    return save_plot(plot, filename, CairoMakieBackend(); kwargs...)
+end
+
+function save_plot(
     plot::CairoMakiePlot,
     filename::String,
-    backend::PowerGraphics.CairoMakieBackend;
+    backend::CairoMakieBackend;
     kwargs...,
 )
     ext = lowercase(last(splitext(filename)))

@@ -7,14 +7,24 @@ These are designed to shorten long legend labels like
 The default label function is [`label_short`](@ref), which abbreviates the variable
 prefix to its acronym while keeping the full component name.
 
+# When does this fire?
+
+`label_fn` runs on the column names of the dataframe that is actually plotted.
+For `plot_powerdata` / `plot_results` / `plot_fuel`, the default
+`combine_categories = true` aggregates first — the resulting columns are bare
+category names (e.g. `"HydroDispatch"`, `"Natural Gas"`) without the `__`
+separator, so `label_short` is a no-op on them. To see shortening in action,
+pass `combine_categories = false` so the raw `Variable__Component` labels reach
+`label_fn`.
+
 # Usage
 
 ```julia
-plot_powerdata(gen)                                # default: "APV: HydroDispatch"
-plot_powerdata(gen; label_fn = label_component)    # "HydroDispatch"
-plot_powerdata(gen; label_fn = label_acronym)       # "APV__HD"
-plot_powerdata(gen; label_fn = label_truncate(20))  # truncate to 20 chars
-plot_powerdata(gen; label_fn = s -> s)              # original full labels
+plot_powerdata(gen; combine_categories = false)                                # default: "APV: HydroDispatch"
+plot_powerdata(gen; combine_categories = false, label_fn = label_component)    # "HydroDispatch"
+plot_powerdata(gen; combine_categories = false, label_fn = label_acronym)      # "APV__HD"
+plot_powerdata(gen; combine_categories = false, label_fn = label_truncate(20)) # truncate to 20 chars
+plot_powerdata(gen; combine_categories = false, label_fn = s -> s)             # original full labels
 ```
 """
 
@@ -133,6 +143,6 @@ plot_powerdata(gen; label_fn = s -> label_truncate(15)(label_short(s)))
 function label_truncate(n::Int)
     return function (s::AbstractString)
         length(s) <= n && return String(s)
-        return String(s[1:n]) * "…"
+        return String(first(s, n)) * "…"
     end
 end

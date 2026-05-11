@@ -1,17 +1,17 @@
 # Change Backends
 
-`PowerGraphics.jl` uses Julia package extensions to support multiple plotting backends.
-Load the backend you want **before** (or alongside) `PowerGraphics`:
+`PowerGraphics.jl` ships with [CairoMakie](https://docs.makie.org/stable/) as its
+default static plotting backend — `using PowerGraphics` is sufficient to call the
+`plot_*` functions and produce publication-quality png/pdf/svg output.
 
-  - [CairoMakie](https://docs.makie.org/stable/) (recommended): creates static, publication-quality
-    plots — `using CairoMakie`
-  - [PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl): creates lightweight
-    interactive HTML plots — `using PlotlyLight`
+For interactive HTML plots, additionally load
+[PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl). PowerGraphics
+exposes a parallel `_plotly`-suffixed API via a package extension:
 
 ```julia
-using CairoMakie   # or PlotlyLight
-using PowerGraphics
-```
+using PowerGraphics              # CairoMakie is always available
+plot_powerdata(gen)              # static / CairoMakie
 
-If neither backend is loaded, `PowerGraphics.jl` will print a warning and plotting
-functions will not be available.
+using PlotlyLight                # opt-in for interactive HTML
+plot_powerdata_plotly(gen)       # interactive / PlotlyLight
+```

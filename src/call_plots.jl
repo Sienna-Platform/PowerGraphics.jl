@@ -92,7 +92,7 @@ plot = plot_demand(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -137,7 +137,7 @@ Plots the demand in the system.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -186,7 +186,8 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
-        save_plot(p, joinpath(save_fig, "$(title).png"), CairoMakieBackend(); kwargs...)
+        format = get(kwargs, :format, "png")
+        save_plot(p, joinpath(save_fig, "$title.$format"), CairoMakieBackend(); kwargs...)
     end
     return p
 end
@@ -234,7 +235,8 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
     end
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
-        save_plot(p, joinpath(save_fig, "$(title).png"), PlotlyLightBackend(); kwargs...)
+        format = get(kwargs, :format, "png")
+        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
     end
     return p
 end
@@ -274,7 +276,7 @@ plot = plot_dataframe(df, time_range)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -330,7 +332,7 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -390,7 +392,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -425,7 +427,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -506,7 +508,7 @@ Makes a plot from a results dictionary object
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -540,7 +542,7 @@ Makes a plot from a results dictionary
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
@@ -587,7 +589,7 @@ plot = plot_fuel(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -628,7 +630,7 @@ and assigns each fuel type a specific color.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function to transform legend labels. Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -809,19 +811,23 @@ end
 """
     save_plot(plot, filename)
 
-Saves plot to specified filename
+Saves a plot to the specified filename. The backend is chosen from the plot
+object's type: CairoMakie plots dispatch to the CairoMakie writer (png/pdf/svg),
+PlotlyLight plots dispatch to the PlotlyLight writer (html).
 
 # Arguments
 
-- `plot`: plot object
-- `filename::String` : save to filename
+- `plot`: plot object returned by a `plot_*` function
+- `filename::String` : path to save to
 
 # Example
 
 ```julia
 res = solve_op_problem!(OpProblem)
 plot = plot_fuel(res)
-save_plot(plot, "my_plot.png")
+save_plot(plot, "my_plot.png")               # CairoMakie
+plot = plot_fuel_plotly(res)
+save_plot(plot, "my_plot.html")               # PlotlyLight
 ```
 
 # Accepted Key Words (PlotlyLight backend only; CairoMakie ignores them)
@@ -829,9 +835,11 @@ save_plot(plot, "my_plot.png")
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
 """
-function save_plot(plot, filename::String; kwargs...)
-    return save_plot(plot, filename, CairoMakieBackend(); kwargs...)
-end
+function save_plot end
+
+# The 2-arg `save_plot(plot, filename)` form is defined per-backend via type
+# dispatch — see `src/plot_recipes.jl` (CairoMakie) and `ext/plotly_recipes.jl`
+# (PlotlyLight). `save_plot_plotly` keeps the explicit-backend escape hatch.
 
 # Convenience wrapper that dispatches to the PlotlyLight backend.
 function save_plot_plotly(plot, filename::String; kwargs...)
