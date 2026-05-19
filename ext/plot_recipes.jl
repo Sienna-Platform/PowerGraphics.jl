@@ -9,7 +9,9 @@ mutable struct CairoMakiePlot
 end
 
 function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
-    fig = CairoMakie.Figure()
+    # 16:9 by default — the Makie 800x600 (4:3) default deforms time-series
+    # stack plots too much.
+    fig = CairoMakie.Figure(; size = (1280, 720))
     ax = CairoMakie.Axis(fig[1, 1])
     return CairoMakiePlot(fig, ax, 0, false)
 end
@@ -65,6 +67,10 @@ function PowerGraphics._dataframe_plots_internal(
     time_range_float = Dates.datetime2unix.(time_range)
 
     data = Matrix(PowerGraphics.PA.no_datetime(variable))
+    power_scale = get(kwargs, :power_scale, 1.0)
+    if power_scale != 1.0
+        data = data ./ power_scale
+    end
     labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
     labels = [label_fn(label) for label in labels]
 
@@ -122,66 +128,69 @@ function PowerGraphics._dataframe_plots_internal(
     else
         # Line plot
         if stack && !nofill
-            # Stacked area plot
-            cumulative = zeros(length(time_range_float))
-            for ix in 1:length(labels)
-                upper = cumulative .+ data[:, ix]
+            # Sign-aware stacked area: positive series stack upward from 0,
+            # negative series (e.g. storage charging) stack downward from 0 so
+            # charging renders below the zero axis.
+            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
+            # Draw negative (e.g. storage charging) series first so they sit at
+            # the back; positive generation bands/outlines render on top.
+            is_neg = [sum(view(data, :, ix)) < 0 for ix in 1:length(labels)]
+            draw_order = vcat(findall(is_neg), findall(.!is_neg))
+            for ix in draw_order
+                lo = lower_b[:, ix]
+                up = upper_b[:, ix]
+                # Outer envelope of this band (top for +ve, bottom for -ve).
+                outer = ifelse.(data[:, ix] .>= 0, up, lo)
                 color = seriescolor[ix]
 
-                # Use stairs or band based on stair option
                 if stair
-                    # For stair plots, use stairs with fill
                     CairoMakie.stairs!(
                         plot.axis,
                         time_range_float,
-                        upper;
+                        outer;
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
                         linestyle = linestyle,
                         linewidth = linewidth,
                     )
-                    # Add band for fill
                     CairoMakie.band!(
                         plot.axis,
                         time_range_float,
-                        cumulative,
-                        upper;
+                        lo,
+                        up;
                         color = (color, 0.3),
                     )
                 else
-                    # Regular area plot
+                    # Filled band only. A per-band outline line is omitted on
+                    # purpose: for intermittent series (PV at night, idle
+                    # storage) the outline jumps between the stacked position
+                    # and the zero anchor, drawing near-vertical streaks across
+                    # the stack.
                     CairoMakie.band!(
                         plot.axis,
                         time_range_float,
-                        cumulative,
-                        upper;
-                        color = (color, 0.5),
+                        lo,
+                        up;
+                        color = (color, 0.7),
                         label = string(labels[ix]),
                     )
-                    # Add line on top for better visibility
-                    CairoMakie.lines!(
-                        plot.axis,
-                        time_range_float,
-                        upper;
-                        color = color,
-                        linestyle = linestyle,
-                        linewidth = linewidth,
-                    )
                 end
-                cumulative = upper
             end
         elseif stack && nofill
-            # Stacked lines without fill
-            cumulative = zeros(length(time_range_float))
-            for ix in 1:length(labels)
-                cumulative .+= data[:, ix]
+            # Sign-aware stacked lines: outer envelope of each band (positive
+            # stacked up, negative stacked down).
+            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
+            is_neg = [sum(view(data, :, ix)) < 0 for ix in 1:length(labels)]
+            draw_order = vcat(findall(is_neg), findall(.!is_neg))
+            for ix in draw_order
+                outer = ifelse.(data[:, ix] .>= 0, upper_b[:, ix], lower_b[:, ix])
                 color = seriescolor[ix]
                 if stair
                     CairoMakie.stairs!(
                         plot.axis,
                         time_range_float,
-                        cumulative;
+                        outer;
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
@@ -192,7 +201,7 @@ function PowerGraphics._dataframe_plots_internal(
                     CairoMakie.lines!(
                         plot.axis,
                         time_range_float,
-                        cumulative;
+                        outer;
                         color = color,
                         label = string(labels[ix]),
                         linestyle = linestyle,

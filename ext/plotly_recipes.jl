@@ -52,6 +52,10 @@ function PowerGraphics._dataframe_plots_internal(
     else
         plot_data = Matrix(PowerGraphics.PA.no_datetime(variable))
     end
+    power_scale = get(kwargs, :power_scale, 1.0)
+    if power_scale != 1.0 && !isempty(plot_data)
+        plot_data = plot_data ./ power_scale
+    end
 
     plot_type = bar ? "bar" : "scatter"
     line_shape = get(kwargs, :stair, false) ? "hv" : "linear"
@@ -111,8 +115,11 @@ function PowerGraphics._dataframe_plots_internal(
             end
         end
     else
-        # Scatter plot
-        for ix = 1:length(names)
+        # Scatter plot. Add negative (e.g. storage charging) series first so
+        # they sit at the back; positive generation renders on top.
+        is_neg = [sum(view(plot_data, :, ix)) < 0 for ix in 1:length(names)]
+        draw_order = vcat(findall(is_neg), findall(.!is_neg))
+        for ix in draw_order
             data_to_plot = plot_data[:, ix]
             sign_group = sum(data_to_plot) >= 0 ? 0 : 10
 
