@@ -115,6 +115,12 @@ Unserved Energy:
 Storage:
   RGB: "rgba(255, 74, 136, 1)"
   order: 42
+Storage Out:
+  RGB: "rgba(0, 168, 150, 1)"
+  order: 61
+Storage In:
+  RGB: "rgba(94, 53, 177, 1)"
+  order: 62
 New steam reach (NSR):
   RGB: "rgba(130, 192, 192, 1)"
   order: 17

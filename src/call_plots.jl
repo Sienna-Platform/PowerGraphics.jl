@@ -55,6 +55,87 @@ function _make_ylabel(
     return ylabel
 end
 
+"""
+Pick a power unit and scaling divisor from the peak magnitude of the plotted
+totals (values are assumed to be in MW): `< 1e3 → MW`, `[1e3, 1e6) → GW`,
+`≥ 1e6 → TW`. Returns `(divisor, unit_string)`.
+"""
+function _auto_power_unit(peak::Real)
+    a = abs(float(peak))
+    if a >= 1.0e6
+        return (1.0e6, "TW")
+    elseif a >= 1.0e3
+        return (1.0e3, "GW")
+    else
+        return (1.0, "MW")
+    end
+end
+
+"""
+Resolve the y-axis label and data-scaling divisor for a fuel/generation plot.
+Honors an explicit `:y_label` or `:power_scale` kwarg; otherwise auto-detects
+MW/GW/TW from the peak stacked total of `df`, unless `:auto_units => false` or
+`:bar => true` (energy bar plots keep the existing MWh behavior).
+"""
+function _resolve_power_units(df::DataFrames.DataFrame, kwargs)
+    bar = get(kwargs, :bar, false)
+    user_scale = get(kwargs, :power_scale, nothing)
+    user_ylabel = get(kwargs, :y_label, nothing)
+    if bar || !get(kwargs, :auto_units, true) || !isnothing(user_scale)
+        divisor = something(user_scale, 1.0)
+        unit = bar ? "MWh" : "MW"
+    else
+        mat = Matrix(PA.no_datetime(df))
+        peak = if isempty(mat)
+            0.0
+        else
+            # stacked plots: peak is the largest per-timestep positive total;
+            # also guard against a single dominant (possibly negative) series.
+            max(maximum(sum(max.(mat, 0.0); dims = 2)), maximum(abs, mat))
+        end
+        divisor, unit = _auto_power_unit(peak)
+    end
+    return (something(user_ylabel, unit), divisor)
+end
+
+"""
+Per-series `(lower, upper)` envelopes for a sign-aware stacked-area/line plot.
+`data` is `time × series`. Positive values stack **upward** from 0, negative
+values (e.g. storage charging via `ActivePowerInVariable`) stack **downward**
+from 0, so charging renders below the zero axis instead of being folded into the
+positive generation stack. Returns `(lower, upper)` matrices the same size as
+`data`; band `ix` is `[lower[:,ix], upper[:,ix]]`.
+"""
+function _signed_stack_bounds(data::AbstractMatrix)
+    nt, ns = size(data)
+    lower = zeros(eltype(data), nt, ns)
+    upper = zeros(eltype(data), nt, ns)
+    pos = zeros(eltype(data), nt)
+    neg = zeros(eltype(data), nt)
+    # Classify each *series* (not each value) by its net sign, matching the
+    # PlotlyLight backend's `sign_group`. A positive-type series always stacks
+    # on the positive baseline — even at timesteps where it is 0 (e.g. PV at
+    # night) it keeps a zero-width band *in place* rather than jumping to the
+    # negative baseline (which left whitespace holes / slash lines). Negative-
+    # type series (e.g. storage charging) always stack downward from 0.
+    for ix in 1:ns
+        series_negative = sum(@view data[:, ix]) < zero(eltype(data))
+        for t in 1:nt
+            v = data[t, ix]
+            if series_negative
+                upper[t, ix] = neg[t]
+                lower[t, ix] = neg[t] + v
+                neg[t] = lower[t, ix]
+            else
+                lower[t, ix] = pos[t]
+                upper[t, ix] = pos[t] + v
+                pos[t] = upper[t, ix]
+            end
+        end
+    end
+    return lower, upper
+end
+
 ################################### DEMAND #################################
 
 """
@@ -158,6 +239,10 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     load = PA.get_load_data(result; kwargs...)
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
+    # Optional per-timestep load added to demand (e.g. storage charging, so the
+    # net-load line matches the top of the generation stack in `plot_fuel!`).
+    extra_load = get(kwargs, :extra_load, nothing)
+    kwargs = popkwargs(kwargs, :extra_load)
     linestyle = get(kwargs, :linestyle, :solid)
     kwargs[:linestyle] = Symbol(linestyle)
     kwargs[:line_dash] = string(linestyle)
@@ -169,6 +254,18 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
 
     if isnothing(load_agg)
         throw(ErrorException("No load data found"))
+    end
+
+    if !isnothing(extra_load)
+        el = collect(extra_load)
+        for c in DataFrames.names(load_agg)
+            length(el) == DataFrames.nrow(load_agg) || throw(
+                DimensionMismatch(
+                    "extra_load length $(length(el)) != demand rows $(DataFrames.nrow(load_agg))",
+                ),
+            )
+            load_agg[!, c] = load_agg[!, c] .+ el
+        end
     end
 
     p = plot_dataframe!(
@@ -207,6 +304,10 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
     load = PA.get_load_data(result; kwargs...)
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
+    # Optional per-timestep load added to demand (e.g. storage charging, so the
+    # net-load line matches the top of the generation stack in `plot_fuel`).
+    extra_load = get(kwargs, :extra_load, nothing)
+    kwargs = popkwargs(kwargs, :extra_load)
     linestyle = get(kwargs, :linestyle, :solid)
     kwargs[:linestyle] = Symbol(linestyle)
     kwargs[:line_dash] = string(linestyle)
@@ -218,6 +319,18 @@ function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...
 
     if isnothing(load_agg)
         throw(ErrorException("No load data found"))
+    end
+
+    if !isnothing(extra_load)
+        el = collect(extra_load)
+        for c in DataFrames.names(load_agg)
+            length(el) == DataFrames.nrow(load_agg) || throw(
+                DimensionMismatch(
+                    "extra_load length $(length(el)) != demand rows $(DataFrames.nrow(load_agg))",
+                ),
+            )
+            load_agg[!, c] = load_agg[!, c] .+ el
+        end
     end
 
     p = plot_dataframe_plotly!(
@@ -668,7 +781,8 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     matched = intersect(palette_categories, keys(fuel))
     unmatched = setdiff(keys(fuel), palette_categories)
     fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
-    y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
+    y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
+    kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
 
     seriescolor = get(
         kwargs,
@@ -682,6 +796,7 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
         stack = stack,
         seriescolor = seriescolor,
         y_label = y_label,
+        power_scale = power_scale,
         title = title,
         set_display = false,
         kwargs...,
@@ -694,16 +809,30 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     kwargs[:filter_func] = filter_func
 
     if load
-        # load line
+        # Net-load line = demand + storage charging, so it coincides with the
+        # top of the generation stack (charging is drawn as a negative band by
+        # the sign-aware stacker; only curtailment sits above the line).
+        charge = nothing
+        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
+        if !isempty(charge_cols)
+            nrows = length(gen.time)
+            charge = zeros(nrows)
+            for k in charge_cols
+                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
+                charge .+= -vec(sum(m; dims = 2))     # -> positive load
+            end
+        end
         p = plot_demand!(
             p,
             result;
             nofill = true,
             title = title,
             y_label = y_label,
+            power_scale = power_scale,
             set_display = false,
             stack = stack,
             seriescolor = ["black"],
+            extra_load = charge,
             kwargs...,
         )
     end
@@ -754,7 +883,8 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     matched = intersect(palette_categories, keys(fuel))
     unmatched = setdiff(keys(fuel), palette_categories)
     fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
-    y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
+    y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
+    kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
 
     seriescolor = get(
         kwargs,
@@ -768,6 +898,7 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
         stack = stack,
         seriescolor = seriescolor,
         y_label = y_label,
+        power_scale = power_scale,
         title = title,
         set_display = false,
         kwargs...,
@@ -780,16 +911,29 @@ function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
     kwargs[:filter_func] = filter_func
 
     if load
-        # load line
+        # Net-load line = demand + storage charging, so it coincides with the
+        # top of the generation stack (charging is stacked as a negative band).
+        charge = nothing
+        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
+        if !isempty(charge_cols)
+            nrows = length(gen.time)
+            charge = zeros(nrows)
+            for k in charge_cols
+                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
+                charge .+= -vec(sum(m; dims = 2))     # -> positive load
+            end
+        end
         p = plot_demand_plotly!(
             p,
             result;
             nofill = true,
             title = title,
             y_label = y_label,
+            power_scale = power_scale,
             set_display = false,
             stack = stack,
             seriescolor = ["black"],
+            extra_load = charge,
             kwargs...,
         )
     end
