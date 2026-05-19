@@ -1,7 +1,6 @@
 # PlotlyLight backend implementation
 
 function PowerGraphics._empty_plot(backend::PowerGraphics.PlotlyLightBackend)
-    # Create an empty plot using PlotlyLight
     return PlotlyLight.Plot()
 end
 
@@ -24,8 +23,8 @@ function PowerGraphics._dataframe_plots_internal(
     # for a fresh plot.
     isnothing(plot) && (plot = PowerGraphics._empty_plot(backend))
 
-    names = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
-    names = [label_fn(name) for name in names]
+    ndf = PowerGraphics.PA.no_datetime(variable)
+    names = [label_fn(name) for name in DataFrames.names(ndf)]
     plot_length = length(plot.data)
     seriescolor = permutedims(
         PowerGraphics.set_seriescolor(
@@ -50,7 +49,7 @@ function PowerGraphics._dataframe_plots_internal(
         @warn "Plot dataframe empty: skipping plot creation"
         plot_data = Array{Float64}(undef, 0, 0)
     else
-        plot_data = Matrix(PowerGraphics.PA.no_datetime(variable))
+        plot_data = Matrix(ndf)
     end
     power_scale = get(kwargs, :power_scale, 1.0)
     if power_scale != 1.0 && !isempty(plot_data)
@@ -64,7 +63,6 @@ function PowerGraphics._dataframe_plots_internal(
     if bar
         plot_data = sum(plot_data; dims = 1) ./ interval
         if nofill
-            # Line plot for bar with nofill
             plot_data = [plot_data; plot_data]
             x_data = [-0.5, 0.5]
             for ix = 1:length(names)
@@ -93,7 +91,6 @@ function PowerGraphics._dataframe_plots_internal(
                 plot(trace_config)
             end
         else
-            # Regular bar plot
             for ix = 1:length(names)
                 y_data = vec(plot_data[:, ix])
                 sign_group = sum(y_data) >= 0 ? 0 : 10
@@ -154,7 +151,6 @@ function PowerGraphics._dataframe_plots_internal(
         end
     end
 
-    # Update layout
     plot.layout.yaxis.showticklabels = true
     plot.layout.yaxis.rangemode = "tozero"
     plot.layout.yaxis.title.text = y_label

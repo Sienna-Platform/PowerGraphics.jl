@@ -7,8 +7,8 @@ const DEFAULT_PALETTE_FILE = joinpath(
 )
 
 struct PaletteColor
-    category::AbstractString
-    RGB::AbstractString
+    category::String
+    RGB::String
     color::Colors.RGBA{Float64}
     order::Int64
 end
@@ -43,7 +43,7 @@ end
 
 function load_palette(file)
     palette_config = YAML.load_file(file)
-    palette_colors = []
+    palette_colors = PaletteColor[]
     for (k, v) in palette_config
         push!(palette_colors, PaletteColor(k, v["RGB"], v["order"]))
     end
@@ -54,7 +54,7 @@ end
 const PALETTE = load_palette()
 
 function get_default_palette(palette)
-    default_palette = []
+    default_palette = PaletteColor[]
     default_order = [6, 52, 14, 1, 32, 7, 18, 20, 27, 53, 17] # the default order from the color palette #
     for i in default_order
         for p in palette
@@ -80,10 +80,6 @@ function get_palette_cairomakie(palette)
     getfield.(palette, :color)
 end
 
-function get_palette_fuel(palette)
-    getfield.(palette, :color)
-end
-
 function get_palette_plotly(palette)
     getfield.(get_default_palette(palette), :RGB)
 end
@@ -104,18 +100,15 @@ function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
     return get_palette_plotly(palette)
 end
 
-function match_fuel_colors(
-    data::DataFrames.DataFrame,
-    backend::CairoMakieBackend;
-    palette = PALETTE,
-)
-    color_range = get_palette_fuel(palette)
+# Map each fuel-category column of `data` to a palette color, falling back to
+# the cycled `fallback_colors` for categories absent from the palette. Backend
+# selection only differs in which palette accessors supply the two color
+# vectors, so the matching loop is shared.
+function _match_fuel_colors(names, palette, color_range, fallback_colors)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
-    names = DataFrames.names(data)
-    fallback_colors = get_palette_cairomakie(palette)
+    default = Vector{eltype(color_range)}()
     fallback_idx = 1
-    default = []
     for name in names
         matched_rows = findall(in([name]), color_fuel.fuels)
         if !isempty(matched_rows)
@@ -131,25 +124,22 @@ end
 
 function match_fuel_colors(
     data::DataFrames.DataFrame,
+    backend::CairoMakieBackend;
+    palette = PALETTE,
+)
+    colors = get_palette_cairomakie(palette)
+    return _match_fuel_colors(DataFrames.names(data), palette, colors, colors)
+end
+
+function match_fuel_colors(
+    data::DataFrames.DataFrame,
     backend::PlotlyLightBackend;
     palette = PALETTE,
 )
-    color_range = get_palette_plotly_fuel(palette)
-    color_fuel =
-        DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
-    names = DataFrames.names(data)
-    fallback_colors = get_palette_plotly(palette)
-    fallback_idx = 1
-    default = []
-    for name in names
-        matched_rows = findall(in([name]), color_fuel.fuels)
-        if !isempty(matched_rows)
-            push!(default, color_fuel[matched_rows[1], :colors])
-        else
-            @debug "No palette color for fuel category '$name', using fallback"
-            push!(default, fallback_colors[mod1(fallback_idx, length(fallback_colors))])
-            fallback_idx += 1
-        end
-    end
-    return default
+    return _match_fuel_colors(
+        DataFrames.names(data),
+        palette,
+        get_palette_plotly_fuel(palette),
+        get_palette_plotly(palette),
+    )
 end

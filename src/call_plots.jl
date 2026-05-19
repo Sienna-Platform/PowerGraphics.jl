@@ -10,6 +10,11 @@ function popkwargs(kwargs, kwarg)
     return Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
 end
 
+# A CairoMakie plot is displayed through its `Figure`; a PlotlyLight plot is
+# displayed directly. Dispatching keeps the backend split out of plot bodies.
+_display_plot(::CairoMakieBackend, p) = display(p.figure)
+_display_plot(::PlotlyLightBackend, p) = display(p)
+
 # Translation table for the user-facing `aggregate::String` kwarg of
 # `plot_demand` to the typed `aggregation::Type` kwarg expected by
 # `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
@@ -28,31 +33,18 @@ function _aggregate_to_type(s::AbstractString)
     return _AGGREGATE_STRING_TO_TYPE[s]
 end
 
+# An already-typed `aggregate` (e.g. `PSY.ACBus`) is passed through unchanged.
+_aggregate_to_type(t::Type) = t
+
 # Translate `:aggregate => "System" | "Bus" | "PowerLoad"` (if present) into
 # the typed `:aggregation` kwarg PowerAnalytics expects. Returns a fresh
 # `Dict{Symbol,Any}` regardless so callers can keep mutating it.
 function _translate_demand_aggregate(kwargs)
     out = Dict{Symbol, Any}(kwargs)
-    if haskey(out, :aggregate) && out[:aggregate] isa AbstractString
-        out[:aggregation] = _aggregate_to_type(out[:aggregate])
-        delete!(out, :aggregate)
-    end
+    (haskey(out, :aggregate) && !isnothing(out[:aggregate])) || return out
+    out[:aggregation] = _aggregate_to_type(out[:aggregate])
+    delete!(out, :aggregate)
     return out
-end
-
-function _make_ylabel(
-    base_power::Float64;
-    variable::String = "Generation",
-    time::String = "",
-)
-    if isapprox(base_power, 1.0)
-        ylabel = "$variable (MW$time)"
-    elseif isapprox(base_power, 1000.0)
-        ylabel = "$variable (GW$time)"
-    else
-        ylabel = "$variable (MW$time x$base_power)"
-    end
-    return ylabel
 end
 
 """
@@ -91,7 +83,10 @@ function _resolve_power_units(df::DataFrames.DataFrame, kwargs)
         else
             # stacked plots: peak is the largest per-timestep positive total;
             # also guard against a single dominant (possibly negative) series.
-            max(maximum(sum(max.(mat, 0.0); dims = 2)), maximum(abs, mat))
+            max(
+                maximum(sum(x -> max(x, 0.0), mat; dims = 2)),
+                maximum(abs, mat),
+            )
         end
         divisor, unit = _auto_power_unit(peak)
     end
@@ -224,7 +219,7 @@ Plots the demand in the system.
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
 """
-function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
+function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
@@ -248,7 +243,7 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     kwargs[:line_dash] = string(linestyle)
     kwargs[:linewidth] = get(kwargs, :linewidth, 1)
     kwargs[:seriescolor] =
-        get(kwargs, :seriescolor, get_palette_seriescolor(CairoMakieBackend(), palette))
+        get(kwargs, :seriescolor, get_palette_seriescolor(backend, palette))
 
     load_agg = PA.combine_categories(load.data)
 
@@ -268,90 +263,32 @@ function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
         end
     end
 
-    p = plot_dataframe!(
+    p = _plot_dataframe!(
         p,
         load_agg,
-        load.time;
+        load.time,
+        backend;
         y_label = y_label,
         set_display = false,
         title = title,
         kwargs...,
     )
 
-    if set_display
-        display(p.figure)
-    end
+    set_display && _display_plot(backend, p)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), CairoMakieBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
     end
     return p
 end
 
+function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
+    return _plot_demand!(p, result, CairoMakieBackend(); kwargs...)
+end
+
 function plot_demand_plotly!(p, result::Union{IS.Results, PSY.System}; kwargs...)
-    set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
-    bar = get(kwargs, :bar, false)
-
-    title = get(kwargs, :title, "Demand")
-    y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
-    palette = get(kwargs, :palette, PALETTE)
-
-    # Translate the user-facing `aggregate::String` kwarg into PA's typed
-    # `aggregation` kwarg before calling `get_load_data`.
-    kwargs = _translate_demand_aggregate(kwargs)
-    load = PA.get_load_data(result; kwargs...)
-    # Build a mutable copy with defaults so we splat exactly once below.
-    kwargs = popkwargs(kwargs, :filter_func)
-    # Optional per-timestep load added to demand (e.g. storage charging, so the
-    # net-load line matches the top of the generation stack in `plot_fuel`).
-    extra_load = get(kwargs, :extra_load, nothing)
-    kwargs = popkwargs(kwargs, :extra_load)
-    linestyle = get(kwargs, :linestyle, :solid)
-    kwargs[:linestyle] = Symbol(linestyle)
-    kwargs[:line_dash] = string(linestyle)
-    kwargs[:linewidth] = get(kwargs, :linewidth, 1)
-    kwargs[:seriescolor] =
-        get(kwargs, :seriescolor, get_palette_seriescolor(PlotlyLightBackend(), palette))
-
-    load_agg = PA.combine_categories(load.data)
-
-    if isnothing(load_agg)
-        throw(ErrorException("No load data found"))
-    end
-
-    if !isnothing(extra_load)
-        el = collect(extra_load)
-        for c in DataFrames.names(load_agg)
-            length(el) == DataFrames.nrow(load_agg) || throw(
-                DimensionMismatch(
-                    "extra_load length $(length(el)) != demand rows $(DataFrames.nrow(load_agg))",
-                ),
-            )
-            load_agg[!, c] = load_agg[!, c] .+ el
-        end
-    end
-
-    p = plot_dataframe_plotly!(
-        p,
-        load_agg,
-        load.time;
-        y_label = y_label,
-        set_display = false,
-        title = title,
-        kwargs...,
-    )
-
-    if set_display
-        display(p)
-    end
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
-    end
-    return p
+    return _plot_demand!(p, result, PlotlyLightBackend(); kwargs...)
 end
 
 ################################# Plotting a Single DataFrame ##########################
@@ -449,8 +386,26 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
+function _plot_dataframe!(
+    p,
+    variable::DataFrames.DataFrame,
+    time_range::Union{DataFrames.DataFrame, Array, StepRange},
+    backend;
+    kwargs...,
+)
+    tr =
+        typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
+    return _dataframe_plots_internal(p, variable, tr, backend; kwargs...)
+end
+
 function plot_dataframe!(p, df::DataFrames.DataFrame; kwargs...)
-    return plot_dataframe!(p, PA.no_datetime(df), df.DateTime; kwargs...)
+    return _plot_dataframe!(
+        p,
+        PA.no_datetime(df),
+        df.DateTime,
+        CairoMakieBackend();
+        kwargs...,
+    )
 end
 
 function plot_dataframe!(
@@ -459,14 +414,17 @@ function plot_dataframe!(
     time_range::Union{DataFrames.DataFrame, Array, StepRange};
     kwargs...,
 )
-    time_range =
-        typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    p = _dataframe_plots_internal(p, variable, time_range, CairoMakieBackend(); kwargs...)
-    return p
+    return _plot_dataframe!(p, variable, time_range, CairoMakieBackend(); kwargs...)
 end
 
 function plot_dataframe_plotly!(p, df::DataFrames.DataFrame; kwargs...)
-    return plot_dataframe_plotly!(p, PA.no_datetime(df), df.DateTime; kwargs...)
+    return _plot_dataframe!(
+        p,
+        PA.no_datetime(df),
+        df.DateTime,
+        PlotlyLightBackend();
+        kwargs...,
+    )
 end
 
 function plot_dataframe_plotly!(
@@ -475,10 +433,7 @@ function plot_dataframe_plotly!(
     time_range::Union{DataFrames.DataFrame, Array, StepRange};
     kwargs...,
 )
-    time_range =
-        typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    p = _dataframe_plots_internal(p, variable, time_range, PlotlyLightBackend(); kwargs...)
-    return p
+    return _plot_dataframe!(p, variable, time_range, PlotlyLightBackend(); kwargs...)
 end
 
 ################################# Plotting PowerData ##########################
@@ -544,7 +499,7 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
-function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
+function _plot_powerdata!(p, powerdata::PA.PowerData, backend; kwargs...)
     title = get(kwargs, :title, "")
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
@@ -559,45 +514,23 @@ function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
     kwargs =
         Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
-    p = plot_dataframe!(p, data, powerdata.time; set_display = false, kwargs...)
+    p = _plot_dataframe!(p, data, powerdata.time, backend; set_display = false, kwargs...)
 
-    if set_display
-        display(p.figure)
-    end
+    set_display && _display_plot(backend, p)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), CairoMakieBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
     end
     return p
 end
 
+function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
+    return _plot_powerdata!(p, powerdata, CairoMakieBackend(); kwargs...)
+end
+
 function plot_powerdata_plotly!(p, powerdata::PA.PowerData; kwargs...)
-    title = get(kwargs, :title, "")
-    set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
-
-    if get(kwargs, :combine_categories, true)
-        aggregate = get(kwargs, :aggregate, nothing)
-        names = get(kwargs, :names, nothing)
-        data = PA.combine_categories(powerdata.data; names = names, aggregate = aggregate)
-    else
-        data = powerdata.data
-    end
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
-
-    p = plot_dataframe_plotly!(p, data, powerdata.time; set_display = false, kwargs...)
-
-    if set_display
-        display(p)
-    end
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
-    end
-    return p
+    return _plot_powerdata!(p, powerdata, PlotlyLightBackend(); kwargs...)
 end
 
 """
@@ -715,6 +648,13 @@ function plot_fuel_plotly(result::IS.Results; kwargs...)
     return plot_fuel_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
+# Backend-dispatched entry point for the Weave report template so the template
+# stays backend-agnostic instead of branching on the backend type.
+_report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
+    plot_fuel(result; kwargs...)
+_report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
+    plot_fuel_plotly(result; kwargs...)
+
 """
     plot_fuel!(plot, results)
 
@@ -749,7 +689,7 @@ and assigns each fuel type a specific color.
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
-function plot_fuel!(p, result::IS.Results; kwargs...)
+function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     curtailment = get(kwargs, :curtailment, true)
@@ -787,12 +727,13 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     seriescolor = get(
         kwargs,
         :seriescolor,
-        match_fuel_colors(fuel_agg, CairoMakieBackend(); palette = palette),
+        match_fuel_colors(fuel_agg, backend; palette = palette),
     )
-    p = plot_dataframe!(
+    p = _plot_dataframe!(
         p,
         fuel_agg,
-        gen.time;
+        gen.time,
+        backend;
         stack = stack,
         seriescolor = seriescolor,
         y_label = y_label,
@@ -822,9 +763,10 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
                 charge .+= -vec(sum(m; dims = 2))     # -> positive load
             end
         end
-        p = plot_demand!(
+        p = _plot_demand!(
             p,
-            result;
+            result,
+            backend;
             nofill = true,
             title = title,
             y_label = y_label,
@@ -840,116 +782,21 @@ function plot_fuel!(p, result::IS.Results; kwargs...)
     # service stack
     # TODO: how to display this?
 
-    if set_display
-        display(p.figure)
-    end
+    set_display && _display_plot(backend, p)
     if !isnothing(save_fig)
         title = replace(title, " " => "_")
         format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), CairoMakieBackend(); kwargs...)
+        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
     end
     return p
 end
 
+function plot_fuel!(p, result::IS.Results; kwargs...)
+    return _plot_fuel!(p, result, CairoMakieBackend(); kwargs...)
+end
+
 function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
-    set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
-    curtailment = get(kwargs, :curtailment, true)
-    slacks = get(kwargs, :slacks, true)
-    load = get(kwargs, :load, true)
-    title = get(kwargs, :title, "Fuel")
-    stack = get(kwargs, :stack, true)
-    bar = get(kwargs, :bar, false)
-    palette = get(kwargs, :palette, PALETTE)
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
-
-    # Generation stack
-    gen = PA.get_generation_data(result; kwargs...)
-    sys = PA.PSI.get_system(result)
-    if sys === nothing
-        throw(
-            ArgumentError("No System data present: please run `set_system!(results, sys)`"),
-        )
-    end
-    cat = PA.make_fuel_dictionary(sys; kwargs...)
-    fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
-
-    filter_func = get(kwargs, :filter_func, PSY.get_available)
-    kwargs = popkwargs(kwargs, :filter_func)
-
-    # passing names here enforces order; append any fuel categories not in the palette
-    palette_categories = get_palette_category(palette)
-    matched = intersect(palette_categories, keys(fuel))
-    unmatched = setdiff(keys(fuel), palette_categories)
-    fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
-    y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
-    kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
-
-    seriescolor = get(
-        kwargs,
-        :seriescolor,
-        match_fuel_colors(fuel_agg, PlotlyLightBackend(); palette = palette),
-    )
-    p = plot_dataframe_plotly!(
-        p,
-        fuel_agg,
-        gen.time;
-        stack = stack,
-        seriescolor = seriescolor,
-        y_label = y_label,
-        power_scale = power_scale,
-        title = title,
-        set_display = false,
-        kwargs...,
-    )
-
-    kwargs = popkwargs(popkwargs(kwargs, :nofill), :seriescolor)
-
-    kwargs[:linestyle] = get(kwargs, :linestyle, :dash)
-    kwargs[:linewidth] = get(kwargs, :linewidth, 3)
-    kwargs[:filter_func] = filter_func
-
-    if load
-        # Net-load line = demand + storage charging, so it coincides with the
-        # top of the generation stack (charging is stacked as a negative band).
-        charge = nothing
-        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
-        if !isempty(charge_cols)
-            nrows = length(gen.time)
-            charge = zeros(nrows)
-            for k in charge_cols
-                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
-                charge .+= -vec(sum(m; dims = 2))     # -> positive load
-            end
-        end
-        p = plot_demand_plotly!(
-            p,
-            result;
-            nofill = true,
-            title = title,
-            y_label = y_label,
-            power_scale = power_scale,
-            set_display = false,
-            stack = stack,
-            seriescolor = ["black"],
-            extra_load = charge,
-            kwargs...,
-        )
-    end
-
-    # service stack
-    # TODO: how to display this?
-
-    if set_display
-        display(p)
-    end
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), PlotlyLightBackend(); kwargs...)
-    end
-    return p
+    return _plot_fuel!(p, result, PlotlyLightBackend(); kwargs...)
 end
 
 """
@@ -979,13 +826,7 @@ save_plot(plot, "my_plot.html")               # PlotlyLight
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
 """
-function save_plot end
-
 # The 2-arg `save_plot(plot, filename)` form is defined per-backend via type
-# dispatch — see `src/plot_recipes.jl` (CairoMakie) and `ext/plotly_recipes.jl`
-# (PlotlyLight). `save_plot_plotly` keeps the explicit-backend escape hatch.
-
-# Convenience wrapper that dispatches to the PlotlyLight backend.
-function save_plot_plotly(plot, filename::String; kwargs...)
-    return save_plot(plot, filename, PlotlyLightBackend(); kwargs...)
-end
+# dispatch — see `ext/plot_recipes.jl` (CairoMakie) and `ext/plotly_recipes.jl`
+# (PlotlyLight).
+function save_plot end

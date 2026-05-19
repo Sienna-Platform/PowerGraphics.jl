@@ -1,6 +1,6 @@
 ---
 title : Weave example
-author : SIIP
+author : Sienna
 date : 1-14
 ---
 
@@ -10,23 +10,18 @@ date : 1-14
 using PowerGraphics
 using PowerAnalytics
 
-backend = WEAVE_ARGS["backend"]
-if backend isa PowerGraphics.PlotlyLightBackend
-    plot_fuel_plotly(WEAVE_ARGS["results"]; bar = true, stack = true)
-else
-    plot_fuel(WEAVE_ARGS["results"]; bar = true, stack = true)
-end
+PowerGraphics._report_plot_fuel(
+    WEAVE_ARGS["backend"],
+    WEAVE_ARGS["results"];
+    bar = true,
+    stack = true,
+)
 ```
 
 # Stack Plots
 
 ```julia; echo = false
-backend = WEAVE_ARGS["backend"]
-if backend isa PowerGraphics.PlotlyLightBackend
-    plot_fuel_plotly(WEAVE_ARGS["results"])
-else
-    plot_fuel(WEAVE_ARGS["results"])
-end
+PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
 ```
 
 # Tables

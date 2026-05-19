@@ -5,7 +5,7 @@ mutable struct CairoMakiePlot
     figure::CairoMakie.Figure
     axis::CairoMakie.Axis
     series_count::Int
-    has_legend::Bool  # Track if legend has been created
+    has_legend::Bool
 end
 
 function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
@@ -23,7 +23,6 @@ function PowerGraphics._dataframe_plots_internal(
     backend::PowerGraphics.CairoMakieBackend;
     kwargs...,
 )
-    # Get plot kwargs
     save_fig = get(kwargs, :save, nothing)
     title = get(kwargs, :title, " ")
     bar = get(kwargs, :bar, false)
@@ -44,7 +43,8 @@ function PowerGraphics._dataframe_plots_internal(
         plot = PowerGraphics._empty_plot(backend)
     end
 
-    # Get colors
+    ndf = PowerGraphics.PA.no_datetime(variable)
+    column_names = DataFrames.names(ndf)
     existing_series = plot.series_count
     seriescolor = PowerGraphics.set_seriescolor(
         get(
@@ -54,7 +54,7 @@ function PowerGraphics._dataframe_plots_internal(
                 get(kwargs, :palette, PowerGraphics.PALETTE),
             ),
         ),
-        vcat(ones(existing_series), DataFrames.names(variable)),
+        vcat(ones(existing_series), column_names),
     )[(existing_series + 1):end]
 
     if isempty(variable)
@@ -66,15 +66,13 @@ function PowerGraphics._dataframe_plots_internal(
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(PowerGraphics.PA.no_datetime(variable))
+    data = Matrix(ndf)
     power_scale = get(kwargs, :power_scale, 1.0)
     if power_scale != 1.0
         data = data ./ power_scale
     end
-    labels = DataFrames.names(PowerGraphics.PA.no_datetime(variable))
-    labels = [label_fn(label) for label in labels]
+    labels = [label_fn(label) for label in column_names]
 
-    # Set axis properties
     plot.axis.xlabel = "$time_interval"
     plot.axis.ylabel = get(kwargs, :y_label, "")
     if title != " "  # Only set title if not default
@@ -82,7 +80,6 @@ function PowerGraphics._dataframe_plots_internal(
     end
 
     if bar
-        # Bar plot
         plot_data = sum(data; dims = 1) ./ interval
 
         if stack
@@ -102,10 +99,8 @@ function PowerGraphics._dataframe_plots_internal(
                 label = string.(labels),
             )
 
-            # Set x-axis to show single bar
             plot.axis.xticks = ([1], [""])
         else
-            # Grouped bar plot
             x_positions = 1:length(labels)
             for (ix, label) in enumerate(labels)
                 color = seriescolor[ix]
@@ -126,7 +121,6 @@ function PowerGraphics._dataframe_plots_internal(
         end
         plot.axis.xgridvisible = false
     else
-        # Line plot
         if stack && !nofill
             # Sign-aware stacked area: positive series stack upward from 0,
             # negative series (e.g. storage charging) stack downward from 0 so
@@ -210,20 +204,30 @@ function PowerGraphics._dataframe_plots_internal(
                 end
             end
         else
-            # Regular line plot (no stacking)
             for ix in 1:length(labels)
                 color = seriescolor[ix]
-                plot_func = stair ? CairoMakie.stairs! : CairoMakie.lines!
-                plot_kwargs = Dict(
-                    :color => color,
-                    :label => string(labels[ix]),
-                    :linestyle => linestyle,
-                    :linewidth => linewidth,
-                )
                 if stair
-                    plot_kwargs[:step] = :post
+                    CairoMakie.stairs!(
+                        plot.axis,
+                        time_range_float,
+                        data[:, ix];
+                        color = color,
+                        label = string(labels[ix]),
+                        linestyle = linestyle,
+                        linewidth = linewidth,
+                        step = :post,
+                    )
+                else
+                    CairoMakie.lines!(
+                        plot.axis,
+                        time_range_float,
+                        data[:, ix];
+                        color = color,
+                        label = string(labels[ix]),
+                        linestyle = linestyle,
+                        linewidth = linewidth,
+                    )
                 end
-                plot_func(plot.axis, time_range_float, data[:, ix]; plot_kwargs...)
             end
         end
 
@@ -232,14 +236,10 @@ function PowerGraphics._dataframe_plots_internal(
         plot.axis.xticks = (tick_positions, tick_labels)
     end
 
-    # Reset axes limits
     CairoMakie.reset_limits!(plot.axis)
 
-    # Update series count
     plot.series_count += length(labels)
 
-    # Add or update legend if there are series
-    # Delete old legend if it exists, then create a new one
     if plot.series_count > 0
         if plot.has_legend
             # Collect first, then delete — calling `delete!` on a Legend
@@ -273,10 +273,8 @@ function PowerGraphics._dataframe_plots_internal(
         plot.has_legend = true
     end
 
-    # Display if requested
     get(kwargs, :set_display, true) && display(plot.figure)
 
-    # Save if requested
     title = title == " " ? "dataframe" : title
     if !isnothing(save_fig)
         format = get(kwargs, :format, "png")
