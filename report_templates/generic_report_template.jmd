@@ -1,6 +1,6 @@
 ---
 title : Weave example
-author : SIIP
+author : Sienna
 date : 1-14
 ---
 
@@ -9,22 +9,19 @@ date : 1-14
 ```julia; echo = false
 using PowerGraphics
 using PowerAnalytics
-using Plots
 
-if WEAVE_ARGS["backend"] == plotlyjs()
-    Plots.plotlyjs()
-else
-    Plots.gr()
-end
-
-plot_fuel(WEAVE_ARGS["results"], bar = true, stack = true);
+PowerGraphics._report_plot_fuel(
+    WEAVE_ARGS["backend"],
+    WEAVE_ARGS["results"];
+    bar = true,
+    stack = true,
+)
 ```
 
 # Stack Plots
 
 ```julia; echo = false
-
-plot_fuel(WEAVE_ARGS["results"]);
+PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
 ```
 
 # Tables

@@ -3,4 +3,5 @@
 ```@autodocs
 Modules = [PowerGraphics]
 Public = true
+Private = false
 ```

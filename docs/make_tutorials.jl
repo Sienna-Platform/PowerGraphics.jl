@@ -19,25 +19,31 @@ const _DF_MAX_COLS = _env_int("SIENNA_DOCS_DF_MAX_COLS", 80)
 
 function Base.show(io::IO, mime::MIME"text/plain", df::DataFrame; kwargs...)
     # Keep docs output bounded while allowing explicit caller kwargs.
-    PrettyTables.pretty_table(io, df;
+    PrettyTables.pretty_table(
+        io,
+        df;
         backend = :text,
         maximum_number_of_rows = _DF_MAX_ROWS,
         maximum_number_of_columns = _DF_MAX_COLS,
         show_omitted_cell_summary = true,
         compact_printing = false,
         limit_printing = true,
-        kwargs...)
+        kwargs...,
+    )
 end
 
 function Base.show(io::IO, mime::MIME"text/html", df::DataFrame; kwargs...)
-    PrettyTables.pretty_table(io, df;
+    PrettyTables.pretty_table(
+        io,
+        df;
         backend = :html,
         maximum_number_of_rows = _DF_MAX_ROWS,
         maximum_number_of_columns = _DF_MAX_COLS,
         show_omitted_cell_summary = true,
         compact_printing = false,
         limit_printing = true,
-        kwargs...)
+        kwargs...,
+    )
 end
 
 # Remove previously generated tutorial artifacts so a docs build only reflects
@@ -54,8 +60,7 @@ function clean_old_generated_files(dir::String)
     end
     generated_files = filter(
         f ->
-            startswith(f, "generated_") &&
-                (endswith(f, ".md") || endswith(f, ".ipynb")),
+            startswith(f, "generated_") && (endswith(f, ".md") || endswith(f, ".ipynb")),
         readdir(dir),
     )
     for file in generated_files
@@ -145,7 +150,7 @@ end
 
 # Default display titles for Documenter admonition types when no custom title is given.
 # See https://documenter.juliadocs.org/stable/showcase/#Admonitions
-const _ADMONITION_DISPLAY_NAMES = Dict{String, String}(
+const _ADMONITION_DISPLAY_NAMES = Dict{String,String}(
     "note" => "Note",
     "info" => "Info",
     "tip" => "Tip",
@@ -317,7 +322,7 @@ function add_pkg_status_to_notebook(nb::Dict)
     # Build new source array
     new_source = String[]
     # Add all lines up to and including the heading line
-    for i in 1:heading_line_idx
+    for i = 1:heading_line_idx
         push!(new_source, cell_source[i])
     end
 
@@ -326,7 +331,7 @@ function add_pkg_status_to_notebook(nb::Dict)
     append!(new_source, pkg_status_block)
 
     # Add all remaining lines after the heading
-    for i in (heading_line_idx + 1):length(cell_source)
+    for i = (heading_line_idx+1):length(cell_source)
         push!(new_source, cell_source[i])
     end
 
@@ -380,10 +385,14 @@ function add_image_links(nb::Dict, outputfile_base::AbstractString)
         # Union of the four cases: (?: A | B | C | D )
         image_fragment_pattern = Regex(
             "(?:" *
-            p_with_img_pattern.pattern * "|" *
-            raw_html_block_pattern.pattern * "|" *
-            markdown_image_pattern.pattern * "|" *
-            standalone_img_pattern.pattern * ")",
+            p_with_img_pattern.pattern *
+            "|" *
+            raw_html_block_pattern.pattern *
+            "|" *
+            markdown_image_pattern.pattern *
+            "|" *
+            standalone_img_pattern.pattern *
+            ")",
         )
         if occursin(image_fragment_pattern, text)
             text *= suffix
@@ -391,7 +400,7 @@ function add_image_links(nb::Dict, outputfile_base::AbstractString)
         # Convert back to notebook source array (lines, last without trailing \n if non-empty)
         lines = split(text, "\n"; keepempty = true)
         new_source = String[]
-        for i in 1:length(lines)
+        for i = 1:length(lines)
             if i < length(lines)
                 push!(new_source, lines[i] * "\n")
             else
@@ -420,10 +429,7 @@ function make_tutorials()
     # Exclude helper scripts that start with "_"
     if isdir(tutorials_dir)
         tutorial_files =
-            filter(
-                x -> endswith(x, ".jl") && !startswith(x, "_"),
-                readdir(tutorials_dir),
-            )
+            filter(x -> endswith(x, ".jl") && !startswith(x, "_"), readdir(tutorials_dir))
         if !isempty(tutorial_files)
             # Clean up old generated tutorial files
             tutorial_outputdir = tutorials_dir
@@ -432,17 +438,17 @@ function make_tutorials()
             for file in tutorial_files
                 @show file
                 infile_path = joinpath(tutorials_dir, file)
-                execute =
-                    if occursin("EXECUTE = TRUE", uppercase(readline(infile_path)))
-                        true
-                    else
-                        false
-                    end
+                execute = if occursin("EXECUTE = TRUE", uppercase(readline(infile_path)))
+                    true
+                else
+                    false
+                end
 
                 outputfile = string("generated_", replace("$file", ".jl" => ""))
 
                 # Generate markdown
-                Literate.markdown(infile_path,
+                Literate.markdown(
+                    infile_path,
                     tutorial_outputdir;
                     name = outputfile,
                     credit = false,
@@ -455,19 +461,22 @@ function make_tutorials()
                             string(outputfile, ".ipynb"),
                         )
                     ),
-                    execute = execute)
+                    execute = execute,
+                )
 
                 # Generate notebook (chain add_image_links after add_pkg_status_to_notebook).
                 # preprocess_admonitions_for_notebook converts Documenter admonitions to blockquotes
                 # so they render in Jupyter; markdown output keeps !!! style for Documenter.
-                Literate.notebook(infile_path,
+                Literate.notebook(
+                    infile_path,
                     tutorial_outputdir;
                     name = outputfile,
                     credit = false,
                     execute = false,
                     preprocess = preprocess_admonitions_for_notebook,
                     postprocess = nb ->
-                        add_image_links(add_pkg_status_to_notebook(nb), outputfile))
+                        add_image_links(add_pkg_status_to_notebook(nb), outputfile),
+                )
             end
         end
     end

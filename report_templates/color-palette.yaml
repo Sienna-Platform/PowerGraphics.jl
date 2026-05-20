@@ -31,6 +31,9 @@ Battery:
 NG-CC:
   RGB: "rgba(82, 133, 107, 1)"
   order: 11
+Natural Gas CC:
+  RGB: "rgba(82, 133, 107, 1)"
+  order: 58
 4 hrs.:
   RGB: "rgba(255, 104, 130, 1)"
   order: 48
@@ -112,6 +115,12 @@ Unserved Energy:
 Storage:
   RGB: "rgba(255, 74, 136, 1)"
   order: 42
+Storage Out:
+  RGB: "rgba(0, 168, 150, 1)"
+  order: 61
+Storage In:
+  RGB: "rgba(94, 53, 177, 1)"
+  order: 62
 New steam reach (NSR):
   RGB: "rgba(130, 192, 192, 1)"
   order: 17
@@ -127,12 +136,18 @@ Onshore:
 Natural gas:
   RGB: "rgba(82, 33, 107, 1)"
   order: 8
+Natural Gas:
+  RGB: "rgba(82, 33, 107, 1)"
+  order: 57
 DPV:
   RGB: "rgba(254, 230, 3, 1)"
   order: 29
 NG-CT:
   RGB: "rgba(194, 161, 219, 1)"
   order: 10
+Natural Gas CT:
+  RGB: "rgba(194, 161, 219, 1)"
+  order: 59
 Upgrades:
   RGB: "rgba(24, 127, 148, 1)"
   order: 15
@@ -148,6 +163,9 @@ Coal:
 NG-Steam:
   RGB: "rgba(61, 51, 118, 1)"
   order: 9
+Natural Gas ST:
+  RGB: "rgba(61, 51, 118, 1)"
+  order: 60
 Geothermal:
   RGB: "rgba(169, 98, 53, 1)"
   order: 35

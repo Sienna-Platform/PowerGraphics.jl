@@ -6,7 +6,6 @@ using Literate
 
 
 links = InterLinks(
-    "Plots" => "https://docs.juliaplots.org/stable/",
     "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
     "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
     "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",
@@ -23,20 +22,21 @@ end
 pages = OrderedDict(
     "Welcome" => "index.md",
     ## TODO add additional pages here in the future and remove stubs
-    "Tutorials" => Any["Examples" => "tutorials/examples.md"], # TODO: make examples page
-    "How to..." => Any["Change Backends" => "how_to_guides/backends.md"],
+    "Tutorials" => Any["Examples"=>"tutorials/examples.md"], # TODO: make examples page
+    "How to..." => Any["Change Backends"=>"how_to_guides/backends.md"],
     # "Explanation" => Any["stub" => "explanation/stub.md"],
-    "Reference" => Any[ 
-        "Public API" => "reference/public.md",
-        "Developers" => ["Developer Guidelines" => "reference/developer_guidelines.md",
-        "Internals" => "reference/internal.md"],
+    "Reference" => Any[
+        "Public API"=>"reference/public.md",
+        "Developers"=>[
+            "Developer Guidelines"=>"reference/developer_guidelines.md",
+            "Internals"=>"reference/internal.md",
+        ],
     ],
 )
 
 makedocs(;
     modules = [PowerGraphics],
-    format = Documenter.HTML(
-        prettyurls = haskey(ENV, "GITHUB_ACTIONS"),),
+    format = Documenter.HTML(prettyurls = haskey(ENV, "GITHUB_ACTIONS")),
     sitename = "PowerGraphics.jl",
     authors = "Clayton Barrows",
     pages = Any[p for p in pages],

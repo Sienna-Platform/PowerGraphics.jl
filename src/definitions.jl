@@ -7,16 +7,16 @@ const DEFAULT_PALETTE_FILE = joinpath(
 )
 
 struct PaletteColor
-    category::AbstractString
-    RGB::AbstractString
-    color::RGBA{Float64}
+    category::String
+    RGB::String
+    color::Colors.RGBA{Float64}
     order::Int64
 end
 
 function PaletteColor(category::String, RGB::String, order::Int64)
     rgba =
         parse.(Int64, strip.(split(strip(RGB, ['r', 'g', 'b', 'a', '(', ')', ' ']), ",")))
-    color = Colors.RGBA(rgba[1] / 288, rgba[2] / 288, rgba[3] / 288, rgba[4])
+    color = Colors.RGBA(rgba[1] / 255, rgba[2] / 255, rgba[3] / 255, rgba[4])
     return PaletteColor(category, RGB, color, order)
 end
 
@@ -43,7 +43,7 @@ end
 
 function load_palette(file)
     palette_config = YAML.load_file(file)
-    palette_colors = []
+    palette_colors = PaletteColor[]
     for (k, v) in palette_config
         push!(palette_colors, PaletteColor(k, v["RGB"], v["order"]))
     end
@@ -54,7 +54,7 @@ end
 const PALETTE = load_palette()
 
 function get_default_palette(palette)
-    default_palette = []
+    default_palette = PaletteColor[]
     default_order = [6, 52, 14, 1, 32, 7, 18, 20, 27, 53, 17] # the default order from the color palette #
     for i in default_order
         for p in palette
@@ -75,11 +75,8 @@ function all_subtypes(t::Type)
     return [split(string(s), ".")[end] for s in st]
 end
 
-function get_palette_gr(palette)
-    permutedims(getfield.(palette, :color))
-end
-
-function get_palette_fuel(palette)
+function get_palette_cairomakie(palette)
+    # CairoMakie expects an array of color objects
     getfield.(palette, :color)
 end
 
@@ -95,42 +92,54 @@ function get_palette_category(palette)
     getfield.(palette, :category)
 end
 
-function get_palette_seriescolor(palette)
-    backend = Plots.backend()
-    return get_palette_seriescolor(backend, palette)
+function get_palette_seriescolor(backend::CairoMakieBackend, palette)
+    return get_palette_cairomakie(palette)
 end
 
-function get_palette_seriescolor(backend, palette)
-    return get_palette_gr(palette)
-end
-
-function get_palette_seriescolor(backend::Plots.PlotlyJSBackend, palette)
+function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
     return get_palette_plotly(palette)
 end
 
-const SUPPORTED_EXTRA_PLOT_KWARGS = [:linestyle, :linewidth]
-const SUPPORTED_PLOTLY_SAVE_KWARGS =
-    [:autoplay, :post_script, :full_html, :animation_opts, :default_width, :default_height]
-
-function match_fuel_colors(data::DataFrames.DataFrame, backend; palette = PALETTE)
-    if backend == Plots.PlotlyJSBackend()
-        color_range = get_palette_plotly_fuel(palette)
-    else
-        color_range = get_palette_fuel(palette)
-    end
+# Map each fuel-category column of `data` to a palette color, falling back to
+# the cycled `fallback_colors` for categories absent from the palette. Backend
+# selection only differs in which palette accessors supply the two color
+# vectors, so the matching loop is shared.
+function _match_fuel_colors(names, palette, color_range, fallback_colors)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
-    names = DataFrames.names(data)
-    default =
-        [(color_fuel[findall(in(["$(names[1])"]), color_fuel.fuels), :][:, :colors])[1]]
-    for i in 2:length(names)
-        @debug names[i] (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][
-            :,
-            :colors,
-        ])
-        specific_color =
-            (color_fuel[findall(in(["$(names[i])"]), color_fuel.fuels), :][:, :colors])[1]
-        default = hcat(default, specific_color)
+    default = Vector{eltype(color_range)}()
+    fallback_idx = 1
+    for name in names
+        matched_rows = findall(in([name]), color_fuel.fuels)
+        if !isempty(matched_rows)
+            push!(default, color_fuel[matched_rows[1], :colors])
+        else
+            @debug "No palette color for fuel category '$name', using fallback"
+            push!(default, fallback_colors[mod1(fallback_idx, length(fallback_colors))])
+            fallback_idx += 1
+        end
     end
     return default
+end
+
+function match_fuel_colors(
+    data::DataFrames.DataFrame,
+    backend::CairoMakieBackend;
+    palette = PALETTE,
+)
+    colors = get_palette_cairomakie(palette)
+    return _match_fuel_colors(DataFrames.names(data), palette, colors, colors)
+end
+
+function match_fuel_colors(
+    data::DataFrames.DataFrame,
+    backend::PlotlyLightBackend;
+    palette = PALETTE,
+)
+    return _match_fuel_colors(
+        DataFrames.names(data),
+        palette,
+        get_palette_plotly_fuel(palette),
+        get_palette_plotly(palette),
+    )
 end
