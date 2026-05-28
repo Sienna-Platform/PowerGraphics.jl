@@ -96,7 +96,7 @@ end
 """
 Per-series `(lower, upper)` envelopes for a sign-aware stacked-area/line plot.
 `data` is `time × series`. Positive values stack **upward** from 0, negative
-values (e.g. storage charging via `ActivePowerInVariable`) stack **downward**
+values (e.g. storage charging or source input via `ActivePowerInVariable`) stack **downward**
 from 0, so charging renders below the zero axis instead of being folded into the
 positive generation stack. Returns `(lower, upper)` matrices the same size as
 `data`; band `ix` is `[lower[:,ix], upper[:,ix]]`.
@@ -112,7 +112,7 @@ function _signed_stack_bounds(data::AbstractMatrix)
     # on the positive baseline — even at timesteps where it is 0 (e.g. PV at
     # night) it keeps a zero-width band *in place* rather than jumping to the
     # negative baseline (which left whitespace holes / slash lines). Negative-
-    # type series (e.g. storage charging) always stack downward from 0.
+    # type series (e.g. storage charging, source input) always stack downward from 0.
     for ix in 1:ns
         series_negative = sum(@view data[:, ix]) < zero(eltype(data))
         for t in 1:nt
@@ -199,8 +199,8 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     load = PA.get_load_data(result; kwargs...)
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
-    # Optional per-timestep load added to demand (e.g. storage charging, so the
-    # net-load line matches the top of the generation stack in `plot_fuel!`).
+    # Optional per-timestep load added to demand (e.g. storage charging or source
+    # input, so the net-load line matches the top of the generation stack in `plot_fuel!`).
     extra_load = get(kwargs, :extra_load, nothing)
     kwargs = popkwargs(kwargs, :extra_load)
     linestyle = get(kwargs, :linestyle, :solid)
@@ -752,8 +752,8 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     kwargs[:filter_func] = filter_func
 
     if load
-        # Net-load line = demand + storage charging, so it coincides with the
-        # top of the generation stack (charging is drawn as a negative band by
+        # Net-load line = demand + storage charging + source input, so it coincides
+        # with the top of the generation stack (both are drawn as negative bands by
         # the sign-aware stacker; only curtailment sits above the line).
         charge = nothing
         charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
