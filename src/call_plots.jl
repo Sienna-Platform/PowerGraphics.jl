@@ -752,19 +752,6 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     kwargs[:filter_func] = filter_func
 
     if load
-        # Net-load line = demand + storage charging, so it coincides with the
-        # top of the generation stack (charging is drawn as a negative band by
-        # the sign-aware stacker; only curtailment sits above the line).
-        charge = nothing
-        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
-        if !isempty(charge_cols)
-            nrows = length(gen.time)
-            charge = zeros(nrows)
-            for k in charge_cols
-                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
-                charge .+= -vec(sum(m; dims = 2))     # -> positive load
-            end
-        end
         p = _plot_demand!(
             p,
             result,
@@ -776,7 +763,6 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
             set_display = false,
             stack = stack,
             seriescolor = ["black"],
-            extra_load = charge,
             kwargs...,
         )
     end
