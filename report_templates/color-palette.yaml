@@ -121,6 +121,12 @@ Storage Out:
 Storage In:
   RGB: "rgba(94, 53, 177, 1)"
   order: 62
+Source Out:
+  RGB: "rgba(0, 191, 165, 1)"
+  order: 63
+Source In:
+  RGB: "rgba(123, 31, 162, 1)"
+  order: 64
 New steam reach (NSR):
   RGB: "rgba(130, 192, 192, 1)"
   order: 17
