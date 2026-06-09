@@ -79,6 +79,12 @@ function PowerGraphics._dataframe_plots_internal(
         plot.axis.title = title
     end
 
+    # For stacked bar plots CairoMakie's auto-legend extraction fails because a
+    # single barplot! object with a vector `color` attribute has no per-element
+    # color→label mapping. We capture the entries here and build the legend
+    # manually with PolyElement below.
+    bar_legend_entries = nothing
+
     if bar
         plot_data = sum(data; dims = 1) ./ interval
 
@@ -90,14 +96,16 @@ function PowerGraphics._dataframe_plots_internal(
             n = length(labels)
             xs = fill(1, n)
             heights = vec(plot_data)
+            bar_colors = collect(seriescolor[1:n])
             CairoMakie.barplot!(
                 plot.axis,
                 xs,
                 heights;
                 stack = collect(1:n),
-                color = collect(seriescolor[1:n]),
+                color = bar_colors,
                 label = string.(labels),
             )
+            bar_legend_entries = (string.(labels), bar_colors)
 
             plot.axis.xticks = ([1], [""])
         else
@@ -259,16 +267,41 @@ function PowerGraphics._dataframe_plots_internal(
         end
 
         if legend_position == :bottom
-            CairoMakie.Legend(
-                plot.figure[2, 1],
-                plot.axis;
-                orientation = :horizontal,
-                tellwidth = false,
-                tellheight = true,
-                legend_kwargs...,
-            )
+            if !isnothing(bar_legend_entries)
+                bar_labels, bar_colors = bar_legend_entries
+                elems = [CairoMakie.PolyElement(; color = c) for c in bar_colors]
+                CairoMakie.Legend(
+                    plot.figure[2, 1],
+                    elems,
+                    bar_labels;
+                    orientation = :horizontal,
+                    tellwidth = false,
+                    tellheight = true,
+                    legend_kwargs...,
+                )
+            else
+                CairoMakie.Legend(
+                    plot.figure[2, 1],
+                    plot.axis;
+                    orientation = :horizontal,
+                    tellwidth = false,
+                    tellheight = true,
+                    legend_kwargs...,
+                )
+            end
         else
-            CairoMakie.Legend(plot.figure[1, 2], plot.axis; legend_kwargs...)
+            if !isnothing(bar_legend_entries)
+                bar_labels, bar_colors = bar_legend_entries
+                elems = [CairoMakie.PolyElement(; color = c) for c in bar_colors]
+                CairoMakie.Legend(
+                    plot.figure[1, 2],
+                    elems,
+                    bar_labels;
+                    legend_kwargs...,
+                )
+            else
+                CairoMakie.Legend(plot.figure[1, 2], plot.axis; legend_kwargs...)
+            end
         end
         plot.has_legend = true
     end

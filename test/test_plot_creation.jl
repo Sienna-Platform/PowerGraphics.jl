@@ -243,8 +243,12 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             nofill = true,
         )
 
+        # Use a freshly-built system rather than results_uc.system: PSI no longer
+        # serializes load time series with simulation results, so the system
+        # attached to simulation results lacks the forecasts that get_load_data needs.
+        sys_with_ts = PSB.build_system(PSB.PSISystems, "5_bus_hydro_uc_sys")
         p = plot_demand_fn(
-            results_uc.system;
+            sys_with_ts;
             set_display = set_display,
             title = "sysdemand",
             save = out_path,
@@ -254,7 +258,7 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         @test plot_length == 1
 
         p = plot_demand_fn(
-            results_uc.system;
+            sys_with_ts;
             set_display = set_display,
             title = "sysdemand_bus",
             save = out_path,

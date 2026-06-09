@@ -776,7 +776,6 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
             set_display = false,
             stack = stack,
             seriescolor = ["black"],
-            extra_load = charge,
             kwargs...,
         )
     end
