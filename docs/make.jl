@@ -22,7 +22,7 @@ end
 
 pages = OrderedDict(
     "Welcome" => "index.md",
-    "How to..." => Any["Change Backends"=>"how_to_guides/backends.md"],
+    "How to..." => Any["Select Plot Backends"=>"how_to_guides/backends.md"],
     # "Explanation" => Any["stub" => "explanation/stub.md"],
     "Reference" => Any[
         "Public API"=>"reference/public.md",
