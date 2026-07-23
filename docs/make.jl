@@ -9,6 +9,7 @@ links = InterLinks(
     "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
     "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
     "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",
+    "PowerAnalytics" => "https://sienna-platform.github.io/PowerAnalytics.jl/stable/",
     "DataFrames" => "https://dataframes.juliadata.org/stable/",
 )
 
@@ -21,12 +22,11 @@ end
 
 pages = OrderedDict(
     "Welcome" => "index.md",
-    ## TODO add additional pages here in the future and remove stubs
-    "Tutorials" => Any["Examples"=>"tutorials/examples.md"], # TODO: make examples page
     "How to..." => Any["Change Backends"=>"how_to_guides/backends.md"],
     # "Explanation" => Any["stub" => "explanation/stub.md"],
     "Reference" => Any[
         "Public API"=>"reference/public.md",
+        "Gallery"=>"gallery/index.md",
         "Developers"=>[
             "Developer Guidelines"=>"reference/developer_guidelines.md",
             "Internals"=>"reference/internal.md",
