@@ -58,7 +58,13 @@ the `backend` keyword (`CairoMakieBackend()` or `PlotlyLightBackend()`):
 
 ```julia
 using Weave
-report(res, out_path, template; doctype = "md2pdf", backend = PowerGraphics.CairoMakieBackend())
+report(
+    res,
+    out_path,
+    template;
+    doctype = "md2pdf",
+    backend = PowerGraphics.CairoMakieBackend(),
+)
 ```
 
 See the [Gallery](@ref gallery) for CairoMakie plot archetypes, [Plot styling keywords](@ref plot-style-keywords)
