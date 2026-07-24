@@ -18,7 +18,7 @@ Typical entry points:
   - [`plot_demand`](@ref) — demand from an [`InfrastructureSystems.Results`](@extref) object
     or a [`PowerSystems.System`](@extref)
   - [`plot_powerdata`](@ref) / [`plot_results`](@ref) — generation or other
-    [`PowerAnalytics.PowerData`](https://sienna-platform.github.io/PowerAnalytics.jl/stable/) / dictionary results
+    [`PowerAnalytics.PowerData`](@extref) / dictionary results
   - [`plot_fuel`](@ref) — stacked generation by fuel with an optional load overlay
   - [`plot_dataframe`](@ref) — any time-indexed [`DataFrames.DataFrame`](@extref)
 
