@@ -29,6 +29,13 @@ import InfrastructureSystems
 import InteractiveUtils
 import PowerAnalytics
 
+using DocStringExtensions
+
+@template (FUNCTIONS, METHODS) = """
+                                 $(TYPEDSIGNATURES)
+                                 $(DOCSTRING)
+                                 """
+
 const PSY = PowerSystems
 const IS = InfrastructureSystems
 const PA = PowerAnalytics
@@ -43,6 +50,29 @@ include("call_plots.jl")
 #   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend; kwargs...)` — same
 #   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
 #   - `report(results, out_path, template; kwargs...)` — WeaveExt
+"""
+Generate a Weave report (PDF or HTML) from simulation results.
+
+Uses [Weave.jl](https://weavejl.mpastell.com/stable/) with a Julia markdown
+(`.jmd`) template. An example template is available
+[here](https://github.com/Sienna-Platform/PowerGraphics.jl/blob/main/report_templates/generic_report_template.jmd).
+
+Requires `using Weave` so the WeaveExt package extension is loaded.
+
+# Arguments
+- `res`: an [`InfrastructureSystems.Results`](@extref) object
+- `out_path::String`: directory for the generated report
+- `design_template::String`: path to the `.jmd` report design
+
+# Keyword Arguments
+- `doctype::String = "md2pdf"`: Weave output type (`"md2pdf"` or `"md2html"`)
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend for figures in the report
+
+# Example
+```julia
+report(results, out_path, template)
+```
+"""
 function report end
 
 function _no_backend_loaded()

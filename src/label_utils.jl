@@ -1,21 +1,24 @@
 """
-Pre-built label transformation functions for use with the `label_fn` kwarg.
+Pre-built label transformation functions for the `label_fn` plot styling keyword
+(see [Plot styling keywords](@ref plot-style-keywords)).
 
-These are designed to shorten long legend labels like
-`"ActivePowerVariable__HydroDispatch"` that appear in power system result plots.
+These shorten long legend labels like `"ActivePowerVariable__HydroDispatch"` that
+appear in power system result plots.
 
-The default label function is [`label_short`](@ref), which abbreviates the variable
-prefix to its acronym while keeping the full component name.
+The default is [`label_short`](@ref), which abbreviates the variable prefix to its
+acronym while keeping the full component name. Related helpers:
+[`label_component`](@ref), [`label_variable`](@ref), [`label_acronym`](@ref),
+[`label_first_word`](@ref), and [`label_truncate`](@ref).
 
 # When does this fire?
 
 `label_fn` runs on the column names of the dataframe that is actually plotted.
-For `plot_powerdata` / `plot_results` / `plot_fuel`, the default
-`combine_categories = true` aggregates first — the resulting columns are bare
-category names (e.g. `"HydroDispatch"`, `"Natural Gas"`) without the `__`
-separator, so `label_short` is a no-op on them. To see shortening in action,
-pass `combine_categories = false` so the raw `Variable__Component` labels reach
-`label_fn`.
+For [`plot_powerdata`](@ref) / [`plot_results`](@ref) / [`plot_fuel`](@ref), the
+default `combine_categories = true` aggregates first — the resulting columns are
+bare category names (e.g. `"HydroDispatch"`, `"Natural Gas"`) without the `__`
+separator, so [`label_short`](@ref) is a no-op on them. To see shortening in
+action, pass `combine_categories = false` so the raw `Variable__Component` labels
+reach `label_fn`.
 
 # Usage
 
@@ -31,8 +34,6 @@ plot_powerdata(gen; combine_categories = false, label_fn = s -> s)             #
 const _DOUBLE_UNDERSCORE = "__"
 
 """
-    label_component(s::AbstractString) -> String
-
 Extract the component type (part after `__`) from a label.
 
 # Example
@@ -48,8 +49,6 @@ function label_component(s::AbstractString)
 end
 
 """
-    label_variable(s::AbstractString) -> String
-
 Extract the variable type (part before `__`) from a label.
 
 # Example
@@ -65,8 +64,6 @@ function label_variable(s::AbstractString)
 end
 
 """
-    label_acronym(s::AbstractString) -> String
-
 Convert CamelCase segments to their uppercase initials, preserving the `__` separator.
 
 # Example
@@ -82,8 +79,6 @@ function label_acronym(s::AbstractString)
 end
 
 """
-    label_first_word(s::AbstractString) -> String
-
 Extract the first CamelCase word from the label (ignoring the `__` separator structure).
 
 # Example
@@ -104,8 +99,6 @@ function _camelcase_initials(s::AbstractString)
 end
 
 """
-    label_short(s::AbstractString) -> String
-
 Abbreviate the variable prefix (part before `__`) to its uppercase initials while
 keeping the full component name (part after `__`). Labels without `__` are returned
 unchanged. This is the default `label_fn`.
@@ -126,10 +119,8 @@ function label_short(s::AbstractString)
 end
 
 """
-    label_truncate(n::Int) -> Function
-
 Return a label function that truncates labels longer than `n` characters, appending `"…"`.
-Can be composed with other label functions.
+Can be composed with other label functions such as [`label_short`](@ref).
 
 # Example
 ```julia

@@ -21,17 +21,16 @@ function PaletteColor(category::String, RGB::String, order::Int64)
 end
 
 """
-    load_palette()
-    load_palette(file)
+Load a color palette from the environment (`PG_PALETTE`), the package default, or a given YAML file.
 
-Loads color palette yaml from environment, the `DEFAULT_PALETTE_FILE`,
-or a given file. See
+See
 [`color-palette.yaml`](https://github.com/Sienna-Platform/PowerGraphics.jl/blob/main/report_templates/color-palette.yaml)
-for an example.
+for an example file layout.
 
 # Arguments
+- `file`: path to YAML color palette (omit for `PG_PALETTE` or the package default)
 
-- `file` : path to YAML color palette
+See also [`plot_fuel`](@ref), [Plot styling keywords](@ref plot-style-keywords).
 """
 function load_palette()
     if haskey(ENV, "PG_PALETTE")
