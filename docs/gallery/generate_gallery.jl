@@ -21,6 +21,8 @@ const PSY = PowerSystems
 const PSI = PowerSimulations
 const PA = PowerAnalytics
 
+include(joinpath(@__DIR__, "entries.jl"))
+
 const OUT = joinpath(dirname(@__DIR__), "src", "assets", "gallery")
 mkpath(OUT)
 
@@ -147,5 +149,10 @@ _save(
     ),
     "dataframe",
 )
+
+for e in GALLERY_ENTRIES
+    path = joinpath(OUT, "$(e.image).png")
+    isfile(path) || error("Missing gallery image for entry $(e.title): $path")
+end
 
 @info "Gallery images written to $OUT"

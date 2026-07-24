@@ -16,6 +16,9 @@ links = InterLinks(
 include(joinpath(@__DIR__, "make_tutorials.jl"))
 make_tutorials()
 
+include(joinpath(@__DIR__, "gallery", "write_gallery_page.jl"))
+write_gallery_page()
+
 if haskey(ENV, "GITHUB_ACTIONS")
     ENV["JULIA_DEBUG"] = "Documenter"
 end
@@ -38,7 +41,7 @@ pages = OrderedDict(
 makedocs(;
     modules = [PowerGraphics],
     format = Documenter.HTML(
-        prettyurls = true,
+        prettyurls = haskey(ENV, "GITHUB_ACTIONS"),
         assets = ["assets/gallery.css"],
     ),
     sitename = "PowerGraphics.jl",
