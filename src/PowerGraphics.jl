@@ -49,7 +49,7 @@ include("call_plots.jl")
 #   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt
 #   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend; kwargs...)` — same
 #   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
-#   - `report(results, out_path, template; kwargs...)` — WeaveExt
+#   - `report(res, out_path, design_template; kwargs...)` — WeaveExt
 """
 Generate a Weave report (PDF or HTML) from simulation results.
 
@@ -70,7 +70,7 @@ Requires `using Weave` so the WeaveExt package extension is loaded.
 
 # Example
 ```julia
-report(results, out_path, template)
+report(res, out_path, design_template)
 ```
 """
 function report end

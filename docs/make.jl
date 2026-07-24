@@ -38,7 +38,7 @@ pages = OrderedDict(
 makedocs(;
     modules = [PowerGraphics],
     format = Documenter.HTML(
-        prettyurls = haskey(ENV, "GITHUB_ACTIONS"),
+        prettyurls = true,
         assets = ["assets/gallery.css"],
     ),
     sitename = "PowerGraphics.jl",
