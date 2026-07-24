@@ -61,5 +61,5 @@ using Weave
 report(res, out_path, template; doctype = "md2pdf", backend = PowerGraphics.CairoMakieBackend())
 ```
 
-See the [Gallery](@ref gallery) for CairoMakie plot archetypes and the
-[Public API](@ref api) for full keyword lists.
+See the [Gallery](@ref gallery) for CairoMakie plot archetypes, [Plot styling keywords](@ref plot-style-keywords)
+for shared plot options, and the [Public API](@ref api) for function-specific keywords.

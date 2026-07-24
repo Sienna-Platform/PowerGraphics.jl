@@ -25,8 +25,9 @@ pages = OrderedDict(
     "How to..." => Any["Select Plot Backends"=>"how_to_guides/backends.md"],
     # "Explanation" => Any["stub" => "explanation/stub.md"],
     "Reference" => Any[
-        "Public API"=>"reference/public.md",
         "Gallery"=>"gallery/index.md",
+        "Plot styling keywords"=>"reference/plot_keywords.md",
+        "Public API"=>"reference/public.md",
         "Developers"=>[
             "Developer Guidelines"=>"reference/developer_guidelines.md",
             "Internals"=>"reference/internal.md",
