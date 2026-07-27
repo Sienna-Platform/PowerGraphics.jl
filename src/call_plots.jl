@@ -518,61 +518,78 @@ function plot_dataframe_plotly!(
     return _plot_dataframe!(p, variable, time_range, PlotlyLightBackend(); kwargs...)
 end
 
-################################# Plotting PowerData ##########################
+################################# Plotting a Results Dictionary ##########################
 
-"""
-    plot_powerdata(powerdata)
-
-Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
-`PowerAnalytics.get_generation_data`
-
-# Arguments
-
-- `powerdata::PowerAnalytics.PowerData`: The `PowerData` object to be plotted
-
-# Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-"""
-function plot_powerdata(powerdata::PA.PowerData; kwargs...)
-    return plot_powerdata!(_empty_plot(), powerdata; kwargs...)
+# Split a dict of result DataFrames from its shared time axis: `DateTime`
+# columns are stripped (copying) from every value and the time axis is taken
+# from the first value's `DateTime` column, replicating the shape the old
+# `PowerAnalytics.PowerData` constructor produced.
+function _split_results_time(results::Dict{String, DataFrames.DataFrame})
+    data =
+        Dict{String, DataFrames.DataFrame}(k => PA.no_datetime(v) for (k, v) in results)
+    return (data, first(values(results)).DateTime)
 end
 
-@doc (@doc plot_powerdata) function plot_powerdata_plotly(
-    powerdata::PA.PowerData;
+# Sum each entry's frame into a single column, preserving the old
+# `PowerAnalytics.combine_categories` behavior: `names` restricts and orders
+# the entries, `aggregate` maps each entry's `time × column` matrix to one
+# column. Empty entries are dropped silently; when every entry is empty the
+# result is an empty `DataFrame`.
+function _combine_result_categories(
+    data::Dict{String, DataFrames.DataFrame};
+    names::Union{Vector{String}, Nothing} = nothing,
+    aggregate::Union{Function, Nothing} = nothing,
+)
+    aggregate = something(aggregate, x -> sum(x; dims = 2))
+    names = something(names, collect(keys(data)))
+    cols = Pair{String, Any}[]
+    for k in names
+        isempty(data[k]) && continue
+        push!(cols, k => vec(aggregate(Matrix(data[k]))))
+    end
+    return DataFrames.DataFrame(cols)
+end
+
+# Flatten without aggregation: one trace per stored column, labeled
+# "<entry>__<column>" so the default `label_short` legend labels reduce to the
+# column (usually component) names and collisions across entries are impossible.
+function _flatten_result_categories(data::Dict{String, DataFrames.DataFrame})
+    cols = Pair{String, Any}[]
+    for k in sort!(collect(keys(data)))
+        df = data[k]
+        for c in DataFrames.names(df)
+            push!(cols, "$(k)__$(c)" => df[!, c])
+        end
+    end
+    return DataFrames.DataFrame(cols)
+end
+
+function _plot_results!(
+    p,
+    data::Dict{String, DataFrames.DataFrame},
+    time,
+    backend;
     kwargs...,
 )
-    return plot_powerdata_plotly!(_empty_plot_plotly(), powerdata; kwargs...)
-end
-
-function _plot_powerdata!(p, powerdata::PA.PowerData, backend; kwargs...)
     title = get(kwargs, :title, "")
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
 
-    if get(kwargs, :combine_categories, true)
-        aggregate = get(kwargs, :aggregate, nothing)
-        names = get(kwargs, :names, nothing)
-        data = PA.combine_categories(powerdata.data; names = names, aggregate = aggregate)
+    df = if get(kwargs, :combine_categories, true)
+        _combine_result_categories(
+            data;
+            names = get(kwargs, :names, nothing),
+            aggregate = get(kwargs, :aggregate, nothing),
+        )
     else
-        data = powerdata.data
+        _flatten_result_categories(data)
     end
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+    kwargs = Dict{Symbol, Any}(
+        (k, v) for (k, v) in kwargs if
+        k ∉ [:title, :save, :set_display, :combine_categories, :names, :aggregate]
+    )
 
-    p = _plot_dataframe!(p, data, powerdata.time, backend; set_display = false, kwargs...)
+    p = _plot_dataframe!(p, df, time, backend; set_display = false, kwargs...)
 
     set_display && _display_plot(backend, p)
     if !isnothing(save_fig)
@@ -584,58 +601,19 @@ function _plot_powerdata!(p, powerdata::PA.PowerData, backend; kwargs...)
 end
 
 """
-    plot_powerdata!(plot, powerdata)
-    plot_powerdata_plotly!(plot, powerdata)
-
-Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
-`PowerAnalytics.get_generation_data`, onto an existing plot handle. The `_plotly`
-variant renders with the PlotlyLight backend instead of CairoMakie.
-
-# Arguments
-
-- `plot`: existing plot handle returned by a previous PowerGraphics plot call (optional; e.g. [`plot_powerdata`](@ref))
-- `powerdata::PowerAnalytics.PowerData`: The `PowerData` object to be plotted
-
-# Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-"""
-function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
-    return _plot_powerdata!(p, powerdata, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_powerdata!) function plot_powerdata_plotly!(
-    p,
-    powerdata::PA.PowerData;
-    kwargs...,
-)
-    return _plot_powerdata!(p, powerdata, PlotlyLightBackend(); kwargs...)
-end
-
-"""
     plot_results(results)
 
-Makes a plot from a results dictionary object
+Makes a plot from a results dictionary object. Each entry's `DateTime` column is
+stripped and the time axis is taken from the first entry.
 
 # Arguments
 
-- `results::Dict{String, DataFrame`: The results to be plotted
+- `results::Dict{String, DataFrame}`: The results to be plotted
 
 # Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
+- `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
+- `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
+- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -650,20 +628,21 @@ Makes a plot from a results dictionary object
 - `legend_font_size::Number`: override the legend label font size
 """
 function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    return plot_powerdata!(_empty_plot(), PA.PowerData(results); kwargs...)
+    return plot_results!(_empty_plot(), results; kwargs...)
 end
 
 @doc (@doc plot_results) function plot_results_plotly(
     results::Dict{String, DataFrames.DataFrame};
     kwargs...,
 )
-    return plot_powerdata_plotly!(_empty_plot_plotly(), PA.PowerData(results); kwargs...)
+    return plot_results_plotly!(_empty_plot_plotly(), results; kwargs...)
 end
 
 """
     plot_results!(plot, results)
 
-Makes a plot from a results dictionary
+Makes a plot from a results dictionary onto an existing plot handle. Each entry's
+`DateTime` column is stripped and the time axis is taken from the first entry.
 
 # Arguments
 
@@ -671,8 +650,9 @@ Makes a plot from a results dictionary
 - `results::Dict{String, DataFrame}`: The results to be plotted
 
 # Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
+- `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
+- `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
+- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -687,7 +667,8 @@ Makes a plot from a results dictionary
 - `legend_font_size::Number`: override the legend label font size
 """
 function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    return plot_powerdata!(p, PA.PowerData(results); kwargs...)
+    data, time = _split_results_time(results)
+    return _plot_results!(p, data, time, CairoMakieBackend(); kwargs...)
 end
 
 @doc (@doc plot_results!) function plot_results_plotly!(
@@ -695,7 +676,8 @@ end
     results::Dict{String, DataFrames.DataFrame};
     kwargs...,
 )
-    return plot_powerdata_plotly!(p, PA.PowerData(results); kwargs...)
+    data, time = _split_results_time(results)
+    return _plot_results!(p, data, time, PlotlyLightBackend(); kwargs...)
 end
 
 ################################# Plotting Fuel Plot of Results ##########################

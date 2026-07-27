@@ -37,6 +37,7 @@ include("backends.jl")
 include("definitions.jl")
 include("label_utils.jl")
 include("call_plots.jl")
+include("deprecated.jl")
 
 # Methods for these are provided by package extensions:
 #   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt

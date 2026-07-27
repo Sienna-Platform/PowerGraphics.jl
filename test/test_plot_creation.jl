@@ -6,12 +6,14 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         plot_dataframe_fn = plot_dataframe
         plot_dataframe_fn! = plot_dataframe!
         plot_demand_fn = plot_demand
+        plot_results_fn = plot_results
         plot_powerdata_fn = PG.plot_powerdata
         plot_fuel_fn = plot_fuel
     elseif backend_pkg == "plotlylight"
         plot_dataframe_fn = plot_dataframe_plotly
         plot_dataframe_fn! = plot_dataframe_plotly!
         plot_demand_fn = plot_demand_plotly
+        plot_results_fn = plot_results_plotly
         plot_powerdata_fn = PG.plot_powerdata_plotly
         plot_fuel_fn = plot_fuel_plotly
     else
@@ -23,16 +25,12 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
     @info("running tests with $backend_pkg with display $set_display and cleanup $cleanup")
 
     (results_uc, results_ed) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
-    problem_results = run_test_prob()
     gen_uc = get_generation_data(results_uc)
-    gen_ed = get_generation_data(results_ed)
-    gen_pb = get_generation_data(problem_results)
     load_uc = get_load_data(results_uc)
-    load_ed = get_load_data(results_ed)
-    load_pb = get_load_data(problem_results)
-    svc_uc = get_service_data(results_uc)
-    svc_ed = get_service_data(results_ed)
-    svc_pb = get_service_data(problem_results)
+    # The dict-of-DataFrames shape `plot_results` consumes; each entry keeps its
+    # own DateTime column.
+    results_dict =
+        Dict{String, DataFrames.DataFrame}(string(k) => v for (k, v) in gen_uc.data)
 
     @testset "test $backend_pkg plot production" begin
         out_path = joinpath(file_path, backend_pkg * "_plots")
@@ -111,42 +109,53 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
         cleanup && rm(out_path; recursive = true)
     end
 
-    @testset "test $backend_pkg powerdata plot production" begin
-        out_path = joinpath(file_path, backend_pkg * "_powerdata_plots")
+    @testset "test $backend_pkg results plot production" begin
+        out_path = joinpath(file_path, backend_pkg * "_results_plots")
         !isdir(out_path) && mkdir(out_path)
 
-        plot_powerdata_fn(
-            gen_uc;
+        plot_results_fn(
+            results_dict;
             set_display = set_display,
             title = "pg_data",
             save = out_path,
             bar = false,
             stack = false,
         )
-        plot_powerdata_fn(
-            gen_uc;
+        plot_results_fn(
+            results_dict;
             set_display = set_display,
             title = "pg_data_stack",
             save = out_path,
             bar = false,
             stack = true,
         )
-        plot_powerdata_fn(
-            gen_uc;
+        plot_results_fn(
+            results_dict;
             set_display = set_display,
             title = "pg_data_bar",
             save = out_path,
             bar = true,
             stack = false,
         )
-        plot_powerdata_fn(
-            gen_uc;
+        plot_results_fn(
+            results_dict;
             set_display = set_display,
             title = "pg_data_bar_stack",
             save = out_path,
             bar = true,
             stack = true,
         )
+        # One trace per stored column instead of one aggregated trace per entry.
+        p = plot_results_fn(
+            results_dict;
+            set_display = set_display,
+            title = "pg_data_split",
+            save = out_path,
+            combine_categories = false,
+        )
+        plot_length = backend_pkg == "cairomakie" ? p.series_count : length(p.data)
+        @test plot_length ==
+              sum(DataFrames.ncol(no_datetime(v)) for v in values(gen_uc.data))
 
         list = readdir(out_path)
         # PlotlyLight only supports HTML export, CairoMakie supports PNG
@@ -156,11 +165,31 @@ function test_plots(file_path::String; backend_pkg::String = "cairomakie")
             "pg_data_stack$file_ext",
             "pg_data_bar$file_ext",
             "pg_data_bar_stack$file_ext",
+            "pg_data_split$file_ext",
         ]
         # expected results not created
         @test isempty(setdiff(expected_files, list))
         # extra results created
         @test isempty(setdiff(list, expected_files))
+
+        @info("removing test files")
+        cleanup && rm(out_path; recursive = true)
+    end
+
+    @testset "test $backend_pkg deprecated powerdata forwarding" begin
+        out_path = joinpath(file_path, backend_pkg * "_powerdata_plots")
+        !isdir(out_path) && mkdir(out_path)
+
+        # The `PA.PowerData` methods are deprecated shims: they must warn and
+        # forward to the `plot_results` pipeline.
+        @test_logs (:warn, r"deprecated") match_mode = :any plot_powerdata_fn(
+            gen_uc;
+            set_display = set_display,
+            title = "pg_powerdata",
+            save = out_path,
+        )
+        file_ext = backend_pkg == "plotlylight" ? ".html" : ".png"
+        @test isfile(joinpath(out_path, "pg_powerdata$file_ext"))
 
         @info("removing test files")
         cleanup && rm(out_path; recursive = true)
