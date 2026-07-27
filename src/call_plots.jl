@@ -131,6 +131,40 @@ function _signed_stack_bounds(data::AbstractMatrix)
     return lower, upper
 end
 
+"""
+Row indices selecting the user-requested time window from a full results time
+axis; the legacy `initial_time`/`horizon` kwarg spellings stay accepted
+alongside `start_time`/`len`. Slicing locally instead of forwarding to
+`PowerAnalytics.compute` is deliberate: `compute` rejects unknown kwargs and,
+in PowerAnalytics 1.4, mishandles time windows on simulation results (`len` is
+treated as an execution count), so local row slicing is the only way to
+preserve the old windowing behavior.
+"""
+# TODO upstream: fix `compute` time-window kwargs in PowerAnalytics, then
+# forward `start_time`/`len` directly.
+function _time_window_indices(time::AbstractVector, kwargs)
+    start_time = get(kwargs, :initial_time, get(kwargs, :start_time, nothing))
+    len = get(kwargs, :horizon, get(kwargs, :len, nothing))
+    i0 = if isnothing(start_time)
+        1
+    else
+        found = findfirst(==(start_time), time)
+        isnothing(found) && throw(
+            ArgumentError(
+                "start_time $start_time is not one of the results timestamps",
+            ),
+        )
+        found
+    end
+    i1 = isnothing(len) ? length(time) : i0 + len - 1
+    i1 <= length(time) || throw(
+        ArgumentError(
+            "the requested time window ends after the results end ($(last(time)))",
+        ),
+    )
+    return i0:i1
+end
+
 ################################### DEMAND #################################
 
 """
@@ -202,36 +236,11 @@ function _demand_data(result::IS.Results; kwargs...)
     time = PA.get_time_vec(ldf)
     load = PA.get_data_vec(ldf)
 
-    # The time-window kwargs (legacy `initial_time`/`horizon` spellings stay
-    # accepted) are applied here rather than forwarded to `compute`: `compute`
-    # rejects unknown kwargs and, in PA 1.4, mishandles time windows on
-    # simulation results (`len` is treated as an execution count), so local
-    # row slicing is the only way to preserve the old windowing behavior.
-    # TODO upstream: fix `compute` time-window kwargs in PowerAnalytics, then
-    # forward `start_time`/`len` directly.
-    start_time = get(kwargs, :initial_time, get(kwargs, :start_time, nothing))
-    len = get(kwargs, :horizon, get(kwargs, :len, nothing))
-    i0 = if isnothing(start_time)
-        1
-    else
-        found = findfirst(==(start_time), time)
-        isnothing(found) && throw(
-            ArgumentError(
-                "start_time $start_time is not one of the results timestamps",
-            ),
-        )
-        found
-    end
-    i1 = isnothing(len) ? length(time) : i0 + len - 1
-    i1 <= length(time) || throw(
-        ArgumentError(
-            "the requested time window ends after the results end ($(last(time)))",
-        ),
-    )
+    window = _time_window_indices(time, kwargs)
     # Range indexing allocates fresh vectors, so the metric's DataFrame can
     # never be mutated downstream (e.g. via `extra_load`); the fixed "Load"
     # column name keeps palette and label behavior identical to the old API.
-    return (DataFrames.DataFrame("Load" => load[i0:i1]), time[i0:i1])
+    return (DataFrames.DataFrame("Load" => load[window]), time[window])
 end
 
 # System path: the new API cannot read demand straight from a `PSY.System`, so
@@ -744,25 +753,326 @@ _report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
 _report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
     plot_fuel_plotly(result; kwargs...)
 
-function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
-    set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
-    curtailment = get(kwargs, :curtailment, true)
-    slacks = get(kwargs, :slacks, true)
-    load = get(kwargs, :load, true)
-    title = get(kwargs, :title, "Fuel")
-    stack = get(kwargs, :stack, true)
-    bar = get(kwargs, :bar, false)
-    palette = get(kwargs, :palette, PALETTE)
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+# The fuel stack is assembled on the PowerAnalytics metrics/selectors API, one
+# metric evaluation per component, because the old pipeline's semantics cannot
+# be reproduced with whole-selector `compute` calls: components whose results
+# are absent must be skipped silently, each generator needs a
+# variable → parameter → aux-variable fallback chain, and categories with no
+# contributing component must vanish instead of producing all-zero columns.
 
-    # Generation stack
-    gen = PA.get_generation_data(result; kwargs...)
-    # `get_system` is brought into PowerAnalytics from PowerSimulations, so it can
-    # be reached without going through the unexported `PA.PSI` alias.
-    sys = PA.get_system(result)
-    if isnothing(sys)
+# TODO upstream: PowerAnalytics has no built-in metrics for these entry types
+# (it should export `calc_system_slack_down` and forecast metrics for the
+# storage/source time-series parameters); build them locally until then.
+const _CALC_POWER_OUTPUT =
+    PA.make_component_metric_from_entry("PowerOutput", PA.PSI.PowerOutput)
+const _CALC_ACTIVE_POWER_IN_FORECAST = PA.make_component_metric_from_entry(
+    "ActivePowerInForecast",
+    PA.PSI.ActivePowerInTimeSeriesParameter,
+)
+const _CALC_ACTIVE_POWER_OUT_FORECAST = PA.make_component_metric_from_entry(
+    "ActivePowerOutForecast",
+    PA.PSI.ActivePowerOutTimeSeriesParameter,
+)
+const _CALC_SYSTEM_SLACK_DOWN =
+    PA.make_system_metric_from_entry("SystemSlackDown", PA.PSI.SystemBalanceSlackDown)
+
+# Fallback chain for generators: dispatch power if the component was modeled
+# with a variable, otherwise its forecast parameter (e.g. `FixedOutput`
+# formulations), otherwise the `PowerOutput` aux variable. Only the first
+# available metric contributes, mirroring the old `add_fixed_parameters!` /
+# `add_aux_variables!` promotion rules.
+const _GENERATION_METRICS = (
+    (PA.Metrics.calc_active_power, 1.0),
+    (PA.Metrics.calc_active_power_forecast, 1.0),
+    (_CALC_POWER_OUTPUT, 1.0),
+)
+# Storage and source components split into "<category> In"/"<category> Out"
+# columns instead of a plain one. Charging drawn through `ActivePowerInVariable`
+# is flipped to negative so it stacks below zero; the source input time-series
+# parameter is already negative (its multiplier is `active_power_limits.min`),
+# so it keeps its sign. Every available metric contributes.
+const _STORAGE_IN_METRICS = ((PA.Metrics.calc_active_power_in, -1.0),)
+const _STORAGE_OUT_METRICS = ((PA.Metrics.calc_active_power_out, 1.0),)
+const _SOURCE_IN_METRICS =
+    ((PA.Metrics.calc_active_power_in, -1.0), (_CALC_ACTIVE_POWER_IN_FORECAST, 1.0))
+const _SOURCE_OUT_METRICS =
+    ((PA.Metrics.calc_active_power_out, 1.0), (_CALC_ACTIVE_POWER_OUT_FORECAST, 1.0))
+# System balance slacks and their fixed display names, taken from
+# `PA.BALANCE_SLACKVARS` so the naming has a single source of truth.
+const _SLACK_METRICS = (
+    (PA.BALANCE_SLACKVARS[PA.PSI.SystemBalanceSlackUp], PA.Metrics.calc_system_slack_up),
+    (PA.BALANCE_SLACKVARS[PA.PSI.SystemBalanceSlackDown], _CALC_SYSTEM_SLACK_DOWN),
+)
+
+# Catch-all category for components matched by no rule in the generator
+# mapping; matches the `Other` key in the default mapping and the color
+# palette, like the old `PA.UNMAPPED_GENERATOR_CATEGORY`.
+const _UNMAPPED_CATEGORY = "Other"
+
+# Exceptions that mean "this result simply is not present": a component absent
+# from a stored result table raises `NoResultError`, a result key that was
+# never stored raises `InvalidValue`. Anything else is a real error.
+_is_missing_result_error(::PA.NoResultError) = true
+_is_missing_result_error(::IS.InvalidValue) = true
+_is_missing_result_error(::Any) = false
+
+# Accumulates fuel-category columns on a single shared time axis.
+mutable struct _FuelAccumulator
+    time::Vector{Dates.DateTime}
+    cols::Dict{String, Vector{Float64}}
+end
+
+function _FuelAccumulator()
+    return _FuelAccumulator(Dates.DateTime[], Dict{String, Vector{Float64}}())
+end
+
+function _add_fuel_values!(
+    acc::_FuelAccumulator,
+    name::String,
+    time::Vector{Dates.DateTime},
+    vals::Vector{Float64},
+)
+    if isempty(acc.time)
+        acc.time = time
+    elseif acc.time != time
+        throw(ArgumentError("Mismatched time axes across fuel results for \"$name\""))
+    end
+    col = get!(acc.cols, name) do
+        zeros(Float64, length(time))
+    end
+    col .+= vals
+    return acc
+end
+
+# Compute one metric for one component, returning `(time, values)` as fresh
+# vectors so the metric's DataFrame is never mutated downstream, or `nothing`
+# when the component has no such result (the old pipeline skipped it silently).
+function _try_component_metric(metric, result::IS.Results, comp::PSY.Component)
+    df = try
+        PA.compute(metric, result, comp)
+    catch e
+        _is_missing_result_error(e) && return nothing
+        rethrow()
+    end
+    return (
+        Vector{Dates.DateTime}(PA.get_time_vec(df)),
+        Vector{Float64}(PA.get_data_vec(df)),
+    )
+end
+
+function _accumulate_metrics!(
+    acc::_FuelAccumulator,
+    name::String,
+    metrics_and_signs,
+    result::IS.Results,
+    comp::PSY.Component,
+)
+    for (metric, sign) in metrics_and_signs
+        r = _try_component_metric(metric, result, comp)
+        isnothing(r) && continue
+        time, vals = r
+        isone(sign) || (vals .*= sign)
+        _add_fuel_values!(acc, name, time, vals)
+    end
+    return acc
+end
+
+# One component's contribution to its category, dispatched on the component
+# role: generators contribute a plain "<category>" column through the fallback
+# chain; storage and sources contribute "<category> In"/"<category> Out".
+function _accumulate_component!(
+    acc::_FuelAccumulator,
+    category::String,
+    result::IS.Results,
+    comp::PSY.Generator,
+)
+    for (metric, sign) in _GENERATION_METRICS
+        r = _try_component_metric(metric, result, comp)
+        isnothing(r) && continue
+        time, vals = r
+        isone(sign) || (vals .*= sign)
+        _add_fuel_values!(acc, category, time, vals)
+        return acc
+    end
+    return acc
+end
+
+function _accumulate_component!(
+    acc::_FuelAccumulator,
+    category::String,
+    result::IS.Results,
+    comp::PSY.Storage,
+)
+    _accumulate_metrics!(acc, category * " In", _STORAGE_IN_METRICS, result, comp)
+    _accumulate_metrics!(acc, category * " Out", _STORAGE_OUT_METRICS, result, comp)
+    return acc
+end
+
+function _accumulate_component!(
+    acc::_FuelAccumulator,
+    category::String,
+    result::IS.Results,
+    comp::PSY.Source,
+)
+    _accumulate_metrics!(acc, category * " In", _SOURCE_IN_METRICS, result, comp)
+    _accumulate_metrics!(acc, category * " Out", _SOURCE_OUT_METRICS, result, comp)
+    return acc
+end
+
+# Curtailment (forecast minus dispatch) applies only to generators that have
+# both results; everything else contributes nothing.
+_accumulate_curtailment!(acc::_FuelAccumulator, ::IS.Results, ::PSY.Component) = acc
+
+function _accumulate_curtailment!(
+    acc::_FuelAccumulator,
+    result::IS.Results,
+    comp::PSY.Generator,
+)
+    r = _try_component_metric(PA.Metrics.calc_curtailment, result, comp)
+    isnothing(r) && return acc
+    time, vals = r
+    _add_fuel_values!(acc, "Curtailment", time, vals)
+    return acc
+end
+
+function _accumulate_slacks!(acc::_FuelAccumulator, result::IS.Results)
+    for (name, metric) in _SLACK_METRICS
+        df = try
+            PA.compute(metric, result)
+        catch e
+            # Results without slack variables simply skip the category.
+            _is_missing_result_error(e) || rethrow()
+            continue
+        end
+        _add_fuel_values!(
+            acc,
+            name,
+            Vector{Dates.DateTime}(PA.get_time_vec(df)),
+            Vector{Float64}(PA.get_data_vec(df)),
+        )
+    end
+    return acc
+end
+
+# Category selectors: the precompiled defaults, or a custom mapping file parsed
+# per call. Which categories act as generator vs. storage/source is decided by
+# the component roles in the pool, not by the mapping's metadata, so
+# `parse_injector_categories` (which works with or without a `__META` section)
+# is the right parser here.
+_fuel_categories(::Nothing) = PA.Selectors.injector_categories
+_fuel_categories(file::AbstractString) = PA.parse_injector_categories(file)
+
+_pool_components(::Type{T}, result::IS.Results, filter_func::Function) where {T} =
+    PSY.get_components(filter_func, T, result)
+_pool_components(::Type{T}, result::IS.Results, ::Nothing) where {T} =
+    PSY.get_components(T, result)
+
+# The components eligible for fuel plotting: available generators, storage, and
+# sources (never loads), optionally restricted by a user filter, matching the
+# old `make_fuel_dictionary` iteration. The `storage`/`sources` kwargs of
+# `plot_fuel` drop those roles entirely, like the old key filters did.
+function _injector_pool(result::IS.Results, filter_func, storage::Bool, sources::Bool)
+    pool = Vector{PSY.Component}()
+    append!(pool, _pool_components(PSY.Generator, result, filter_func))
+    storage && append!(pool, _pool_components(PSY.Storage, result, filter_func))
+    sources && append!(pool, _pool_components(PSY.Source, result, filter_func))
+    return pool
+end
+
+# Number of `supertype` steps from `T` to the type named `name`;
+# `typemax(Int)` when the name never appears in the chain. Matching by name
+# reproduces the old mapping lookup, which compared `string(nameof(t))`
+# against the mapping's `gentype` strings.
+function _type_distance(::Type{T}, name::AbstractString) where {T}
+    t = T
+    dist = 0
+    while true
+        string(nameof(t)) == name && return dist
+        t === Any && return typemax(Int)
+        t = supertype(t)
+        dist += 1
+    end
+end
+
+# One rule of the generator mapping: a category, the rule's specificity
+# (parsed from the selector name PowerAnalytics assigns, either "Type" or
+# "Type__PrimeMover__Fuel" with "Any" wildcards), and its member components.
+struct _FuelRule
+    category::String
+    type_name::String
+    pm_wild::Bool
+    fuel_wild::Bool
+    members::Set{PSY.Component}
+end
+
+function _FuelRule(category::String, rule_selector, members::Set{PSY.Component})
+    parts = split(PA.get_name(rule_selector), PSY.COMPONENT_NAME_DELIMITER)
+    pm_wild = length(parts) < 2 || parts[2] == "Any"
+    fuel_wild = length(parts) < 3 || parts[3] == "Any"
+    return _FuelRule(category, String(first(parts)), pm_wild, fuel_wild, members)
+end
+
+# Rank a rule for `comp` the way the old first-match-wins ladder did: most
+# specific component type first, then prime-mover-specific over wildcard, then
+# fuel-specific over wildcard. Smaller ranks win.
+function _rule_rank(comp::PSY.Component, rule::_FuelRule)
+    return (_type_distance(typeof(comp), rule.type_name), rule.pm_wild, rule.fuel_wild)
+end
+
+"""
+Assign each pooled component to exactly one fuel category. The new
+PowerAnalytics category selectors are independent, so a component can match
+several (e.g. every gas generator matches both `NG-CC` and `NG-Steam` through
+the fuel-only fallback rules); replaying the old priority ladder over the
+per-rule subselectors keeps each component in a single category and prevents
+its energy from being double-counted. Components matching no rule are returned
+separately for the "$(_UNMAPPED_CATEGORY)" bucket.
+"""
+function _assign_fuel_categories(result::IS.Results, categories, pool, filter_func)
+    rules = _FuelRule[]
+    for (category, selector) in categories
+        for rule_selector in PSY.get_groups(selector, result)
+            members =
+                Set{PSY.Component}(PSY.get_components(filter_func, rule_selector, result))
+            isempty(members) && continue
+            push!(rules, _FuelRule(category, rule_selector, members))
+        end
+    end
+    assignments = Dict{String, Vector{PSY.Component}}()
+    unmatched = PSY.Component[]
+    for comp in pool
+        best_category = nothing
+        best_rank = (typemax(Int), true, true)
+        for rule in rules
+            comp in rule.members || continue
+            rank = _rule_rank(comp, rule)
+            if isnothing(best_category) || rank < best_rank
+                best_category = rule.category
+                best_rank = rank
+            end
+        end
+        if isnothing(best_category)
+            push!(unmatched, comp)
+        else
+            comps = get!(assignments, best_category) do
+                Vector{PSY.Component}()
+            end
+            push!(comps, comp)
+        end
+    end
+    return assignments, unmatched
+end
+
+"""
+Assemble the fuel-stack DataFrame (columns = category names in
+palette-first-then-sorted order, no `DateTime` column) and its time axis from
+the PowerAnalytics metrics/selectors API. Categories with no contributing
+component are dropped rather than emitted as all-zero columns.
+"""
+function _fuel_data(result::IS.Results, palette_categories::Vector{String}; kwargs...)
+    # `get_system` is brought into PowerAnalytics from PowerSimulations, so it
+    # can be reached without going through the unexported `PA.PSI` alias.
+    if isnothing(PA.get_system(result))
         throw(
             ArgumentError(
                 "No System data present: please run `set_system!(results, sys)` or " *
@@ -770,17 +1080,64 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
             ),
         )
     end
-    cat = PA.make_fuel_dictionary(sys; kwargs...)
-    fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
+    filter_func = get(kwargs, :filter_func, nothing)
+    curtailment = get(kwargs, :curtailment, true)
+    slacks = get(kwargs, :slacks, true)
+    storage = get(kwargs, :storage, true)
+    sources = get(kwargs, :sources, true)
+    categories = _fuel_categories(get(kwargs, :generator_mapping_file, nothing))
+
+    pool = _injector_pool(result, filter_func, storage, sources)
+    assignments, unmatched = _assign_fuel_categories(result, categories, pool, filter_func)
+
+    acc = _FuelAccumulator()
+    for (category, comps) in assignments, comp in comps
+        _accumulate_component!(acc, category, result, comp)
+    end
+    if !isempty(unmatched)
+        unmatched_names = sort([PSY.get_name(c) for c in unmatched])
+        @error "No category in the generator mapping for components: " *
+               "$(join(unmatched_names, ", ")); plotting them as \"$(_UNMAPPED_CATEGORY)\""
+        for comp in unmatched
+            _accumulate_component!(acc, _UNMAPPED_CATEGORY, result, comp)
+        end
+    end
+    if curtailment
+        for comp in pool
+            _accumulate_curtailment!(acc, result, comp)
+        end
+    end
+    slacks && _accumulate_slacks!(acc, result)
+
+    isempty(acc.cols) && throw(ErrorException("No generation data found in the results"))
+
+    # Palette categories first (in palette order), then the sorted remainder;
+    # this column order is the trace order backends draw, so it must not change.
+    matched = intersect(palette_categories, collect(keys(acc.cols)))
+    remainder = sort(setdiff(collect(keys(acc.cols)), palette_categories))
+    window = _time_window_indices(acc.time, kwargs)
+    fuel_agg = DataFrames.DataFrame(
+        [name => acc.cols[name][window] for name in vcat(matched, remainder)],
+    )
+    return (fuel_agg, acc.time[window])
+end
+
+function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
+    set_display = get(kwargs, :set_display, true)
+    save_fig = get(kwargs, :save, nothing)
+    load = get(kwargs, :load, true)
+    title = get(kwargs, :title, "Fuel")
+    stack = get(kwargs, :stack, true)
+    palette = get(kwargs, :palette, PALETTE)
+    kwargs =
+        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+
+    # Generation stack, assembled on the PowerAnalytics metrics/selectors API.
+    fuel_agg, fuel_time = _fuel_data(result, get_palette_category(palette); kwargs...)
 
     filter_func = get(kwargs, :filter_func, PSY.get_available)
     kwargs = popkwargs(kwargs, :filter_func)
 
-    # passing names here enforces order; append any fuel categories not in the palette
-    palette_categories = get_palette_category(palette)
-    matched = intersect(palette_categories, keys(fuel))
-    unmatched = setdiff(keys(fuel), palette_categories)
-    fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
     y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
     kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
 
@@ -792,7 +1149,7 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     p = _plot_dataframe!(
         p,
         fuel_agg,
-        gen.time,
+        fuel_time,
         backend;
         stack = stack,
         seriescolor = seriescolor,
@@ -812,16 +1169,12 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     if load
         # Net-load line = demand + storage charging + source input, so it coincides
         # with the top of the generation stack (both are drawn as negative bands by
-        # the sign-aware stacker; only curtailment sits above the line).
-        charge = nothing
-        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
-        if !isempty(charge_cols)
-            nrows = length(gen.time)
-            charge = zeros(nrows)
-            for k in charge_cols
-                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
-                charge .+= -vec(sum(m; dims = 2))     # -> positive load
-            end
+        # the sign-aware stacker; only curtailment sits above the line). The
+        # "<category> In" columns are negative, so their flipped sum is the extra
+        # load the overlay must include.
+        in_cols = [c for c in DataFrames.names(fuel_agg) if endswith(c, " In")]
+        if !isempty(in_cols)
+            kwargs[:extra_load] = -vec(sum(Matrix(fuel_agg[!, in_cols]); dims = 2))
         end
         p = _plot_demand!(
             p,

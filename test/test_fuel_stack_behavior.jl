@@ -113,6 +113,56 @@ end
     @test p_cm.series_count == length(p_area.data)
 end
 
+@testset "fuel net-load overlay includes storage charging" begin
+    (results_uc, _) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
+
+    # With unit auto-scaling disabled all traces are in raw MW, so the "Load"
+    # overlay must equal demand plus the magnitude of the (negative) storage
+    # charging trace — the net-load line coincides with the top of the
+    # generation stack.
+    p = plot_fuel_plotly(
+        results_uc;
+        set_display = false,
+        stack = true,
+        auto_units = false,
+    )
+    load_y = collect(only([t for t in p.data if t.name == "Load"]).y)
+    in_y = collect(only([t for t in p.data if t.name == "Storage In"]).y)
+    demand = PA.combine_categories(get_load_data(results_uc).data)[!, "Load"]
+    # The battery actually charges in the test solution, so this has teeth.
+    @test sum(in_y) < 0
+    @test load_y ≈ demand .- in_y
+end
+
+@testset "unmatched components route to Other with an error log" begin
+    (results_uc, _) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
+    incomplete_mapping =
+        joinpath(TEST_DIR, "test_yamls", "generator_mapping_incomplete.yaml")
+
+    p_inc =
+        @test_logs (:error, r"No category in the generator mapping") match_mode = :any plot_fuel_plotly(
+            results_uc;
+            set_display = false,
+            stack = true,
+            auto_units = false,
+            generator_mapping_file = incomplete_mapping,
+        )
+    trace_names = [t.name for t in p_inc.data]
+    @test "Other" in trace_names
+
+    # The unmatched hydro generation lands intact in "Other": same total as
+    # the "Hydropower" category under the default mapping.
+    p_def = plot_fuel_plotly(
+        results_uc;
+        set_display = false,
+        stack = true,
+        auto_units = false,
+    )
+    hydro = only([t for t in p_def.data if t.name == "Hydropower"])
+    other = only([t for t in p_inc.data if t.name == "Other"])
+    @test sum(other.y) ≈ sum(hydro.y)
+end
+
 @testset "pin demand plot behavior on simulation results" begin
     (results_uc, _) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
     load_uc = get_load_data(results_uc)
