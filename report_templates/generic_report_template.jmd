@@ -9,6 +9,7 @@ date : 1-14
 ```julia; echo = false
 using PowerGraphics
 using PowerAnalytics
+using PowerSystems
 
 PowerGraphics._report_plot_fuel(
     WEAVE_ARGS["backend"],
@@ -27,25 +28,34 @@ PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
 # Tables
 
 ### Generation
+
 ```julia; echo = false
-for (k,v) in  get_generation_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
+# Realized generation by fuel category, computed with the PowerAnalytics
+# metrics API. Categories with no components in the system are skipped, as are
+# categories whose components were not modeled with a dispatch variable (e.g.
+# `FixedOutput` formulations) and therefore have no stored result.
+results = WEAVE_ARGS["results"]
+for (category, selector) in pairs(PowerAnalytics.Selectors.generator_categories)
+    isempty(PowerSystems.get_components(selector, results)) && continue
+    df = try
+        compute(PowerAnalytics.Metrics.calc_active_power, results, selector)
+    catch e
+        e isa PowerAnalytics.NoResultError && continue
+        e isa PowerGraphics.IS.InvalidValue && continue
+        rethrow()
+    end
+    display(category)
+    display(df)
 end
 ```
 
 ### Load
+
 ```julia; echo = false
-for (k,v) in  get_load_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
+display(compute(PowerAnalytics.Metrics.calc_system_load_forecast, WEAVE_ARGS["results"]))
 ```
 
-### Services
-```julia; echo = false
-for (k,v) in  get_service_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
+<!-- The old Services table used `PowerAnalytics.get_service_data`, which has no
+equivalent in the PowerAnalytics 1.0 metrics API. A reserve metric can be built
+with `PowerAnalytics.make_component_metric_from_entry("Reserve",
+PowerSimulations.ActivePowerReserveVariable)` if needed. -->
