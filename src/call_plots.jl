@@ -151,6 +151,7 @@ Plot demand from simulation results or a system load forecast.
 - `filter_func::Function`: filter components included in the plot (default: available components)
 - `palette`: color palette from [`load_palette`](@ref)
 - `extra_load`: optional per-timestep values added to demand (e.g. storage charging)
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
 # Example
 ```julia
@@ -158,8 +159,7 @@ res = PowerSimulations.solve_op_problem!(OpProblem)
 plot = plot_demand(res)
 ```
 
-See also [`plot_demand!`](@ref), [`plot_fuel`](@ref), [`plot_dataframe`](@ref),
-[Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_demand!`](@ref), [`plot_fuel`](@ref), [`plot_dataframe`](@ref).
 """
 function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
     return plot_demand!(_empty_plot(), result; kwargs...)
@@ -255,8 +255,9 @@ Plot demand onto an existing plot handle.
 - `filter_func::Function`: filter components included in the plot (default: available components)
 - `palette`: color palette from [`load_palette`](@ref)
 - `extra_load`: optional per-timestep values added to demand (e.g. storage charging)
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_demand`](@ref), [Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_demand`](@ref).
 """
 function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
     return _plot_demand!(p, result, CairoMakieBackend(); kwargs...)
@@ -283,6 +284,9 @@ it must contain a `DateTime` column.
 - `time_range`: timestamps (`DataFrame`, `Array`, or `StepRange`); omitted when
   `df` already has a `DateTime` column
 
+# Keyword Arguments
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
+
 # Example
 ```julia
 # `res` is a solved InfrastructureSystems.Results (e.g. from PowerSimulations)
@@ -291,8 +295,7 @@ df = gen.data[:ActivePowerVariable__ThermalStandard]
 plot_dataframe(df, gen.time)
 ```
 
-See also [`plot_dataframe!`](@ref), [`plot_powerdata`](@ref),
-[Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_dataframe!`](@ref), [`plot_powerdata`](@ref).
 """
 function plot_dataframe(df::DataFrames.DataFrame; kwargs...)
     return plot_dataframe!(_empty_plot(), PA.no_datetime(df), df.DateTime; kwargs...)
@@ -345,7 +348,10 @@ Plot columns of a [`DataFrames.DataFrame`](@extref) onto an existing plot handle
 - `time_range`: timestamps (`DataFrame`, `Array`, or `StepRange`); omitted when
   `df` already has a `DateTime` column
 
-See also [`plot_dataframe`](@ref), [Plot styling keywords](@ref plot-style-keywords).
+# Keyword Arguments
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
+
+See also [`plot_dataframe`](@ref).
 """
 function plot_dataframe!(p, df::DataFrames.DataFrame; kwargs...)
     return _plot_dataframe!(
@@ -403,9 +409,9 @@ Plot a `PowerAnalytics.PowerData` object (e.g. from
   (via `PowerAnalytics.combine_categories`); when `false`, plot each
   column and apply `label_fn` to raw `Variable__Component` names
 - `curtailment::Bool`: include curtailment with the variable data when present
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_powerdata!`](@ref), [`plot_results`](@ref), [`plot_fuel`](@ref),
-[Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_powerdata!`](@ref), [`plot_results`](@ref), [`plot_fuel`](@ref).
 """
 function plot_powerdata(powerdata::PA.PowerData; kwargs...)
     return plot_powerdata!(_empty_plot(), powerdata; kwargs...)
@@ -456,8 +462,9 @@ Plot a `PowerAnalytics.PowerData` onto an existing plot handle.
   (via `PowerAnalytics.combine_categories`); when `false`, plot each
   column and apply `label_fn` to raw `Variable__Component` names
 - `curtailment::Bool`: include curtailment with the variable data when present
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_powerdata`](@ref), [Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_powerdata`](@ref).
 """
 function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
     return _plot_powerdata!(p, powerdata, CairoMakieBackend(); kwargs...)
@@ -482,9 +489,9 @@ them as `PowerAnalytics.PowerData`.
 - `combine_categories::Bool = true`: aggregate category columns before plotting
   (via `PowerAnalytics.combine_categories`)
 - `curtailment::Bool`: include curtailment with the variable data when present
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_results!`](@ref), [`plot_powerdata`](@ref),
-[Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_results!`](@ref), [`plot_powerdata`](@ref).
 """
 function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(_empty_plot(), PA.PowerData(results); kwargs...)
@@ -508,8 +515,9 @@ Plot a results dictionary onto an existing plot handle.
 - `combine_categories::Bool = true`: aggregate category columns before plotting
   (via `PowerAnalytics.combine_categories`)
 - `curtailment::Bool`: include curtailment with the variable data when present
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_results`](@ref), [Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_results`](@ref).
 """
 function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
     return plot_powerdata!(p, PA.PowerData(results); kwargs...)
@@ -546,6 +554,7 @@ Uses `PowerAnalytics.get_generation_data`,
 - `auto_units::Bool = true`: auto-select MW/GW/TW from peak stacked total
 - `power_scale`: explicit divisor applied to plotted values (disables auto units)
 - `y_label`: explicit y-axis label
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
 # Example
 ```julia
@@ -553,8 +562,7 @@ res = solve_op_problem!(OpProblem)
 plot = plot_fuel(res)
 ```
 
-See also [`plot_fuel!`](@ref), [`plot_demand`](@ref), [`plot_powerdata`](@ref),
-[Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_fuel!`](@ref), [`plot_demand`](@ref), [`plot_powerdata`](@ref).
 """
 function plot_fuel(result::IS.Results; kwargs...)
     return plot_fuel!(_empty_plot(), result; kwargs...)
@@ -693,8 +701,9 @@ Defaults to `stack = true`.
 - `auto_units::Bool = true`: auto-select MW/GW/TW from peak stacked total
 - `power_scale`: explicit divisor applied to plotted values (disables auto units)
 - `y_label`: explicit y-axis label
+- [Plot styling keywords](@ref plot-style-keywords): shared options (`stack`, `bar`, `title`, …)
 
-See also [`plot_fuel`](@ref), [Plot styling keywords](@ref plot-style-keywords).
+See also [`plot_fuel`](@ref).
 """
 function plot_fuel!(p, result::IS.Results; kwargs...)
     return _plot_fuel!(p, result, CairoMakieBackend(); kwargs...)
@@ -724,8 +733,6 @@ PlotlyLight writes html.
 plot = plot_fuel(res)
 save_plot(plot, "my_plot.png")
 ```
-
-See also [`plot_fuel`](@ref), [Plot styling keywords](@ref plot-style-keywords).
 """
 function save_plot end
 # The 2-arg `save_plot(plot, filename)` form is defined per-backend via type
