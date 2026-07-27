@@ -724,9 +724,9 @@ PlotlyLight writes html.
 - `filename::String`: output path
 
 # Keyword Arguments
-- `width::Union{Nothing, Int} = nothing`: PlotlyLight only
-- `height::Union{Nothing, Int} = nothing`: PlotlyLight only
-- `scale::Union{Nothing, Real} = nothing`: PlotlyLight only
+- PlotlyLight only: `default_width`, `default_height` 
+- CairoMakie has no save-time size kwargs;
+  figure size is fixed when the plot is created.
 
 # Example
 ```julia
