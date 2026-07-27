@@ -17,9 +17,10 @@ _display_plot(::PlotlyLightBackend, p) = display(p)
 
 # Translation table for the user-facing `aggregate::String` kwarg of
 # `plot_demand` to the typed `aggregation::Type` kwarg expected by
-# `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
-# `IS.Results` branch of `get_load_data` ignores `aggregation` entirely, so
-# the translation is a safe no-op there.
+# `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. This
+# translation applies ONLY to the `PSY.System` path; the `IS.Results` path
+# always aggregates to a single "Load" column and ignores `aggregate`
+# entirely.
 const _AGGREGATE_STRING_TO_TYPE =
     Dict("System" => PSY.System, "Bus" => PSY.ACBus, "PowerLoad" => PSY.PowerLoad)
 
@@ -190,9 +191,9 @@ plot = plot_demand(res)
 
 - `linestyle::Symbol = :dash` : set line style
 - `title::String`: Set a title for the plots
-- `horizon::Int64`: To plot a shorter window of time than the full results
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
-- `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator
+- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
+- `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -232,7 +233,15 @@ function _demand_data(result::IS.Results; kwargs...)
     else
         PSY.make_selector(filter_func, PSY.ElectricLoad; groupby = :all)
     end
-    ldf = PA.compute(PA.Metrics.calc_load_forecast, result, selector)
+    # A load type attached to the system but absent from the problem template
+    # must not crash the plot: skip missing results like everywhere else and
+    # fall through to the empty-data ("No load data found") path.
+    ldf = try
+        PA.compute(PA.Metrics.calc_load_forecast, result, selector)
+    catch e
+        _is_missing_result_error(e) || rethrow()
+        return (DataFrames.DataFrame(), Dates.DateTime[])
+    end
     time = PA.get_time_vec(ldf)
     load = PA.get_data_vec(ldf)
 
@@ -263,7 +272,7 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
 
     load_agg, load_time = _demand_data(result; kwargs...)
     if isempty(load_agg)
-        throw(ErrorException("No load data found"))
+        throw(ArgumentError("No load data found"))
     end
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
@@ -331,11 +340,12 @@ instead of CairoMakie.
 
 - `linestyle::Symbol = :dash` : set line style
 - `title::String`: Set a title for the plots
-- `horizon::Int64`: To plot a shorter window of time than the full results
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
+- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand by
     [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.Bus`](@extref),
-    rather than by generator
+    rather than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path
+    always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -537,13 +547,21 @@ end
 # result is an empty `DataFrame`.
 function _combine_result_categories(
     data::Dict{String, DataFrames.DataFrame};
-    names::Union{Vector{String}, Nothing} = nothing,
+    names::Union{Vector{String}, Vector{Symbol}, Nothing} = nothing,
     aggregate::Union{Function, Nothing} = nothing,
 )
     aggregate = something(aggregate, x -> sum(x; dims = 2))
-    names = something(names, collect(keys(data)))
+    # `Vector{Symbol}` is accepted for the deprecated `plot_powerdata` path,
+    # whose `PowerData` dicts were keyed by `Symbol` under the old API.
+    names = String.(something(names, collect(keys(data))))
     cols = Pair{String, Any}[]
     for k in names
+        haskey(data, k) || throw(
+            ArgumentError(
+                "`names` entry $(repr(k)) is not one of the results entries: " *
+                "$(sort!(collect(keys(data))))",
+            ),
+        )
         isempty(data[k]) && continue
         push!(cols, k => vec(aggregate(Matrix(data[k]))))
     end
@@ -613,7 +631,7 @@ stripped and the time axis is taken from the first entry.
 # Accepted Key Words
 - `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
 - `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
-- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`)
+- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -652,7 +670,7 @@ Makes a plot from a results dictionary onto an existing plot handle. Each entry'
 # Accepted Key Words
 - `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
 - `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
-- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`)
+- `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -707,6 +725,8 @@ plot = plot_fuel(res)
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
+- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
@@ -773,7 +793,10 @@ const _GENERATION_METRICS = (
 # columns instead of a plain one. Charging drawn through `ActivePowerInVariable`
 # is flipped to negative so it stacks below zero; the source input time-series
 # parameter is already negative (its multiplier is `active_power_limits.min`),
-# so it keeps its sign. Every available metric contributes.
+# so it keeps its sign. Every available metric contributes: if a component ever
+# had both the In/Out variable AND the time-series parameter stored, the two
+# entries would double-count, but a single PSI problem assigns each component
+# type exactly one formulation, so only one of the pair can produce results.
 const _STORAGE_IN_METRICS = ((PA.Metrics.calc_active_power_in, -1.0),)
 const _STORAGE_OUT_METRICS = ((PA.Metrics.calc_active_power_out, 1.0),)
 const _SOURCE_IN_METRICS =
@@ -943,7 +966,25 @@ end
 # `parse_injector_categories` (which works with or without a `__META` section)
 # is the right parser here.
 _fuel_categories(::Nothing) = PA.Selectors.injector_categories
-_fuel_categories(file::AbstractString) = PA.parse_injector_categories(file)
+
+# `ext_category` discrimination existed only in the old mapping lookup; the
+# PowerAnalytics 1.0 selector parser has no equivalent, so rules carrying it
+# still match — just without the ext discrimination. Scan the raw YAML and warn
+# so users of such mappings are not silently surprised.
+_has_ext_category(::Any) = false
+_has_ext_category(v::AbstractVector) = any(_has_ext_category, v)
+function _has_ext_category(d::AbstractDict)
+    return haskey(d, "ext_category") || any(_has_ext_category, values(d))
+end
+
+function _fuel_categories(file::AbstractString)
+    if _has_ext_category(YAML.load_file(file))
+        @warn "The generator mapping file $file contains `ext_category` keys, which " *
+              "the PowerAnalytics 1.0 selector parser does not support; those rules " *
+              "will match without the ext discrimination."
+    end
+    return PA.parse_injector_categories(file)
+end
 
 _pool_components(::Type{T}, result::IS.Results, filter_func::Function) where {T} =
     PSY.get_components(filter_func, T, result)
@@ -964,13 +1005,14 @@ end
 
 # Number of `supertype` steps from `T` to the type named `name`;
 # `typemax(Int)` when the name never appears in the chain. Matching by name
-# reproduces the old mapping lookup, which compared `string(nameof(t))`
-# against the mapping's `gentype` strings.
-function _type_distance(::Type{T}, name::AbstractString) where {T}
+# reproduces the old mapping lookup, which compared the mapping's `gentype`
+# strings against type names; comparing `Symbol`s avoids allocating a `String`
+# per supertype step.
+function _type_distance(::Type{T}, name::Symbol) where {T}
     t = T
     dist = 0
     while true
-        string(nameof(t)) == name && return dist
+        nameof(t) === name && return dist
         t === Any && return typemax(Int)
         t = supertype(t)
         dist += 1
@@ -982,7 +1024,7 @@ end
 # "Type__PrimeMover__Fuel" with "Any" wildcards), and its member components.
 struct _FuelRule
     category::String
-    type_name::String
+    type_name::Symbol
     pm_wild::Bool
     fuel_wild::Bool
     members::Set{PSY.Component}
@@ -992,7 +1034,7 @@ function _FuelRule(category::String, rule_selector, members::Set{PSY.Component})
     parts = split(PA.get_name(rule_selector), PSY.COMPONENT_NAME_DELIMITER)
     pm_wild = length(parts) < 2 || parts[2] == "Any"
     fuel_wild = length(parts) < 3 || parts[3] == "Any"
-    return _FuelRule(category, String(first(parts)), pm_wild, fuel_wild, members)
+    return _FuelRule(category, Symbol(first(parts)), pm_wild, fuel_wild, members)
 end
 
 # Rank a rule for `comp` the way the old first-match-wins ladder did: most
@@ -1063,6 +1105,9 @@ function _fuel_data(result::IS.Results, palette_categories::Vector{String}; kwar
             ),
         )
     end
+    haskey(kwargs, :variables) &&
+        @warn "The `variables` kwarg is no longer supported and is ignored; " *
+              "use filter_func/generator_mapping_file instead."
     filter_func = get(kwargs, :filter_func, nothing)
     curtailment = get(kwargs, :curtailment, true)
     slacks = get(kwargs, :slacks, true)
@@ -1208,6 +1253,8 @@ PlotlyLight backend instead of CairoMakie.
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
+- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
 - `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).

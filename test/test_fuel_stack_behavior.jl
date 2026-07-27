@@ -134,6 +134,37 @@ end
     @test load_y ≈ demand .- in_y
 end
 
+@testset "fuel trace values match the old-API aggregation" begin
+    (results_uc, _) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
+
+    # Numeric equivalence contract between the migrated metrics-API pipeline
+    # and the old (still exported) PowerAnalytics aggregation: every plain
+    # generator category trace must equal the summed old-API category values.
+    fuel_old = categorize_data(
+        get_generation_data(results_uc).data,
+        make_fuel_dictionary(PSI.get_system(results_uc)),
+    )
+    categories = [
+        k for k in keys(fuel_old) if
+        !endswith(k, " In") &&
+        !endswith(k, " Out") &&
+        k ∉ ("Curtailment", "Unserved Energy", "Over Generation")
+    ]
+    @test !isempty(categories)
+
+    p = plot_fuel_plotly(
+        results_uc;
+        set_display = false,
+        stack = true,
+        auto_units = false,
+    )
+    for k in categories
+        expected = vec(sum(Matrix(no_datetime(fuel_old[k])); dims = 2))
+        trace = only([t for t in p.data if t.name == k])
+        @test collect(trace.y) ≈ expected
+    end
+end
+
 @testset "unmatched components route to Other with an error log" begin
     (results_uc, _) = run_test_sim(TEST_RESULT_DIR, TEST_SIM_NAME)
     incomplete_mapping =
