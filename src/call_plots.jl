@@ -706,10 +706,15 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
 
     # Generation stack
     gen = PA.get_generation_data(result; kwargs...)
-    sys = PA.PSI.get_system(result)
-    if sys === nothing
+    # `get_system` is brought into PowerAnalytics from PowerSimulations, so it can
+    # be reached without going through the unexported `PA.PSI` alias.
+    sys = PA.get_system(result)
+    if isnothing(sys)
         throw(
-            ArgumentError("No System data present: please run `set_system!(results, sys)`"),
+            ArgumentError(
+                "No System data present: please run `set_system!(results, sys)` or " *
+                "load the results with `populate_system = true`",
+            ),
         )
     end
     cat = PA.make_fuel_dictionary(sys; kwargs...)
