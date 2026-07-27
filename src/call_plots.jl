@@ -184,6 +184,65 @@ end
     return plot_demand_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
+# Assemble the aggregated demand DataFrame (columns = demand categories, no
+# DateTime column) and its time axis. Dispatching on the input type keeps the
+# metrics-API and System paths separate.
+
+# Results path: the PowerAnalytics metrics API.
+function _demand_data(result::IS.Results; kwargs...)
+    # A user-supplied filter folds into the selector; the default matches the
+    # built-in `all_loads` selector grouped into a single column.
+    filter_func = get(kwargs, :filter_func, nothing)
+    selector = if isnothing(filter_func)
+        PSY.rebuild_selector(PA.Selectors.all_loads; groupby = :all)
+    else
+        PSY.make_selector(filter_func, PSY.ElectricLoad; groupby = :all)
+    end
+    ldf = PA.compute(PA.Metrics.calc_load_forecast, result, selector)
+    time = PA.get_time_vec(ldf)
+    load = PA.get_data_vec(ldf)
+
+    # The time-window kwargs (legacy `initial_time`/`horizon` spellings stay
+    # accepted) are applied here rather than forwarded to `compute`: `compute`
+    # rejects unknown kwargs and, in PA 1.4, mishandles time windows on
+    # simulation results (`len` is treated as an execution count), so local
+    # row slicing is the only way to preserve the old windowing behavior.
+    # TODO upstream: fix `compute` time-window kwargs in PowerAnalytics, then
+    # forward `start_time`/`len` directly.
+    start_time = get(kwargs, :initial_time, get(kwargs, :start_time, nothing))
+    len = get(kwargs, :horizon, get(kwargs, :len, nothing))
+    i0 = if isnothing(start_time)
+        1
+    else
+        found = findfirst(==(start_time), time)
+        isnothing(found) && throw(
+            ArgumentError(
+                "start_time $start_time is not one of the results timestamps",
+            ),
+        )
+        found
+    end
+    i1 = isnothing(len) ? length(time) : i0 + len - 1
+    i1 <= length(time) || throw(
+        ArgumentError(
+            "the requested time window ends after the results end ($(last(time)))",
+        ),
+    )
+    # Range indexing allocates fresh vectors, so the metric's DataFrame can
+    # never be mutated downstream (e.g. via `extra_load`); the fixed "Load"
+    # column name keeps palette and label behavior identical to the old API.
+    return (DataFrames.DataFrame("Load" => load[i0:i1]), time[i0:i1])
+end
+
+# System path: the new API cannot read demand straight from a `PSY.System`, so
+# this stays on the old PowerAnalytics interface, including the
+# `aggregate::String` → `aggregation::Type` translation.
+function _demand_data(system::PSY.System; kwargs...)
+    kwargs = _translate_demand_aggregate(kwargs)
+    load = PA.get_load_data(system; kwargs...)
+    return (PA.combine_categories(load.data), load.time)
+end
+
 function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
@@ -193,10 +252,10 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
-    # Translate the user-facing `aggregate::String` kwarg into PA's typed
-    # `aggregation` kwarg before calling `get_load_data`.
-    kwargs = _translate_demand_aggregate(kwargs)
-    load = PA.get_load_data(result; kwargs...)
+    load_agg, load_time = _demand_data(result; kwargs...)
+    if isempty(load_agg)
+        throw(ErrorException("No load data found"))
+    end
     # Build a mutable copy with defaults so we splat exactly once below.
     kwargs = popkwargs(kwargs, :filter_func)
     # Optional per-timestep load added to demand (e.g. storage charging or source
@@ -209,12 +268,6 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     kwargs[:linewidth] = get(kwargs, :linewidth, 1)
     kwargs[:seriescolor] =
         get(kwargs, :seriescolor, get_palette_seriescolor(backend, palette))
-
-    load_agg = PA.combine_categories(load.data)
-
-    if isnothing(load_agg)
-        throw(ErrorException("No load data found"))
-    end
 
     if !isnothing(extra_load)
         el = collect(extra_load)
@@ -231,7 +284,7 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     p = _plot_dataframe!(
         p,
         load_agg,
-        load.time,
+        load_time,
         backend;
         y_label = y_label,
         set_display = false,
