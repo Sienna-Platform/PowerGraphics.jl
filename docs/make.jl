@@ -9,11 +9,15 @@ links = InterLinks(
     "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
     "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
     "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",
+    "PowerAnalytics" => "https://sienna-platform.github.io/PowerAnalytics.jl/stable/",
     "DataFrames" => "https://dataframes.juliadata.org/stable/",
 )
 
 include(joinpath(@__DIR__, "make_tutorials.jl"))
 make_tutorials()
+
+include(joinpath(@__DIR__, "gallery", "write_gallery_page.jl"))
+write_gallery_page()
 
 if haskey(ENV, "GITHUB_ACTIONS")
     ENV["JULIA_DEBUG"] = "Documenter"
@@ -21,11 +25,11 @@ end
 
 pages = OrderedDict(
     "Welcome" => "index.md",
-    ## TODO add additional pages here in the future and remove stubs
-    "Tutorials" => Any["Examples"=>"tutorials/examples.md"], # TODO: make examples page
-    "How to..." => Any["Change Backends"=>"how_to_guides/backends.md"],
+    "How to..." => Any["Select Plot Backends"=>"how_to_guides/backends.md"],
     # "Explanation" => Any["stub" => "explanation/stub.md"],
     "Reference" => Any[
+        "Gallery"=>"gallery/index.md",
+        "Plot styling keywords"=>"reference/plot_keywords.md",
         "Public API"=>"reference/public.md",
         "Developers"=>[
             "Developer Guidelines"=>"reference/developer_guidelines.md",
@@ -36,7 +40,10 @@ pages = OrderedDict(
 
 makedocs(;
     modules = [PowerGraphics],
-    format = Documenter.HTML(prettyurls = haskey(ENV, "GITHUB_ACTIONS")),
+    format = Documenter.HTML(
+        prettyurls = haskey(ENV, "GITHUB_ACTIONS"),
+        assets = ["assets/gallery.css"],
+    ),
     sitename = "PowerGraphics.jl",
     authors = "Clayton Barrows",
     pages = Any[p for p in pages],

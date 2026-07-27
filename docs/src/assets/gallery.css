@@ -1,0 +1,58 @@
+/* JuliaPlots-style two-column gallery tiles */
+.pg-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem 1.5rem;
+  margin: 1.5rem 0 2rem;
+  align-items: start;
+}
+
+.pg-gallery-card {
+  display: block;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  color: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.pg-gallery-card:hover {
+  border-color: #888;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pg-gallery-card a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.pg-gallery-card a:hover {
+  text-decoration: none;
+  color: inherit;
+}
+
+.pg-gallery-card p {
+  margin: 0.5rem 0 0;
+  text-align: center;
+  font-size: 1.05rem;
+}
+
+.pg-gallery-card p:first-child {
+  margin: 0;
+}
+
+.pg-gallery-card img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #ddd;
+}
+
+.pg-gallery-card code {
+  font-size: 0.9rem;
+}
+
+@media (max-width: 700px) {
+  .pg-gallery {
+    grid-template-columns: 1fr;
+  }
+}
