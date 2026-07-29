@@ -4,41 +4,25 @@ function PowerGraphics._empty_plot(backend::PowerGraphics.PlotlyLightBackend)
     return PlotlyLight.Plot()
 end
 
+PowerGraphics._drawn_series_count(
+    plot::PlotlyLight.Plot,
+    ::PowerGraphics.PlotlyLightBackend,
+) = length(plot.data)
+
 function PowerGraphics._dataframe_plots_internal(
     plot::PlotlyLight.Plot,
-    variable::DataFrames.DataFrame,
     time_range::Array,
     backend::PowerGraphics.PlotlyLightBackend,
     opts::PowerGraphics._PlotOptions;
     kwargs...,
 )
-    ndf = PowerGraphics.PA.no_datetime(variable)
-    names = [opts.label_fn(name) for name in DataFrames.names(ndf)]
+    names = opts.column_labels
+    seriescolor = opts.seriescolor
+    interval = opts.interval
+    plot_data = opts.data
+    # Plotly keys its stacking on a group name, so a `!` call layering new traces
+    # has to start its groups past the ones already on the plot.
     plot_length = length(plot.data)
-    seriescolor = permutedims(
-        PowerGraphics.set_seriescolor(
-            get(
-                kwargs,
-                :seriescolor,
-                PowerGraphics.get_palette_seriescolor(
-                    backend,
-                    get(kwargs, :palette, PowerGraphics.PALETTE),
-                ),
-            ),
-            vcat(ones(plot_length), names),
-        )[(plot_length + 1):end],
-    )
-
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
-
-    plot_data = Matrix(ndf)
-    if opts.power_scale != 1.0
-        plot_data = plot_data ./ opts.power_scale
-    end
 
     line_shape = opts.stair ? "hv" : "linear"
     # Plotly spells the canonical `linestyle::Symbol` as a string.
@@ -51,7 +35,7 @@ function PowerGraphics._dataframe_plots_internal(
             x_data = [-0.5, 0.5]
             for ix = 1:length(names)
                 y_data = plot_data[:, ix]
-                sign_group = sum(y_data) >= 0 ? 0 : 10
+                sign_group = opts.series_negative[ix] ? 10 : 0
 
                 trace_config = PlotlyLight.Config(;
                     type = "scatter",
@@ -78,7 +62,7 @@ function PowerGraphics._dataframe_plots_internal(
         else
             for ix = 1:length(names)
                 y_data = vec(plot_data[:, ix])
-                sign_group = sum(y_data) >= 0 ? 0 : 10
+                sign_group = opts.series_negative[ix] ? 10 : 0
 
                 trace_config = PlotlyLight.Config(;
                     type = "bar",
@@ -97,9 +81,9 @@ function PowerGraphics._dataframe_plots_internal(
             end
         end
     else
-        for ix in PowerGraphics._series_draw_order(plot_data)
+        for ix in PowerGraphics._series_draw_order(opts.series_negative)
             data_to_plot = plot_data[:, ix]
-            sign_group = sum(data_to_plot) >= 0 ? 0 : 10
+            sign_group = opts.series_negative[ix] ? 10 : 0
 
             trace_config = PlotlyLight.Config(;
                 type = "scatter",
@@ -137,7 +121,7 @@ function PowerGraphics._dataframe_plots_internal(
     plot.layout.yaxis.rangemode = "tozero"
     plot.layout.yaxis.title.text = opts.y_label
     plot.layout.xaxis.showticklabels = !opts.bar
-    plot.layout.xaxis.title.text = string(time_interval)
+    plot.layout.xaxis.title.text = opts.x_label
     if !isnothing(opts.title)
         plot.layout.title.text = opts.title
     end
@@ -186,7 +170,7 @@ function PowerGraphics.save_plot(
     save_kwargs =
         Dict{Symbol, Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
     @info "saving plot" filename
-    if last(splitext(filename)) == ".html"
+    if lowercase(last(splitext(filename))) == ".html"
         open(filename, "w") do io
             show(io, MIME("text/html"), plot; save_kwargs...)
         end

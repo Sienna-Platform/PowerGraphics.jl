@@ -44,6 +44,10 @@ The `_plotly`-suffixed functions (`plot_fuel_plotly`, `plot_dataframe_plotly`,
 …) are deprecated: they still work but emit a warning. Replace them with the
 un-suffixed function plus `backend = PlotlyLightBackend()`.
 
+Every other public function returns a plot object. To get the demand *numbers*
+behind `plot_demand` — as a `DataFrame` with a `DateTime` column — use
+`get_demand_data(res)`.
+
 If neither backend is loaded, `PowerGraphics.jl` prints a warning at load
 time and the plotting functions throw an `ArgumentError` when called.
 

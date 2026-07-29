@@ -11,9 +11,9 @@ using PowerGraphics
 using PowerAnalytics
 using PowerSystems
 
-PowerGraphics._report_plot_fuel(
-    WEAVE_ARGS["backend"],
+plot_fuel(
     WEAVE_ARGS["results"];
+    backend = WEAVE_ARGS["backend"],
     bar = true,
     stack = true,
 )
@@ -22,7 +22,7 @@ PowerGraphics._report_plot_fuel(
 # Stack Plots
 
 ```julia; echo = false
-PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
+plot_fuel(WEAVE_ARGS["results"]; backend = WEAVE_ARGS["backend"])
 ```
 
 # Tables
@@ -52,7 +52,13 @@ end
 ### Load
 
 ```julia; echo = false
-display(compute(PowerAnalytics.Metrics.calc_system_load_forecast, WEAVE_ARGS["results"]))
+# `get_demand_data` is the public accessor behind `plot_demand`, so this table
+# and the demand plot always report the same quantity. Reading
+# `calc_load_forecast` (or `calc_system_load_forecast`) directly instead would
+# report the *requested* rather than the served demand, and with the opposite
+# sign for controllable load formulations — a private `_demand_data` call would
+# get the numbers right but would not survive being copied into user code.
+display(get_demand_data(WEAVE_ARGS["results"]))
 ```
 
 <!-- The old Services table used `PowerAnalytics.get_service_data`, which has no

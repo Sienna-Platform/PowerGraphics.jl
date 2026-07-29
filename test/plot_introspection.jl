@@ -66,33 +66,24 @@ _canonical_color(::Any) = nothing
 
 The drawn series of `plot`, in draw order, as [`PlotSeries`](@ref).
 
-**PlotlyLight**: one entry per trace in `plot.data`. `values` is the trace's
-stored `y`, which is always the series' own (raw) data — Plotly does the
-stacking at render time through `stackgroup`, so a stacked trace still stores
-its own contribution.
+**PlotlyLight**: one entry per trace in `plot.data`; `values` is the trace's
+stored `y`, always the series' own (raw) data, because Plotly stacks at render
+time through `stackgroup`.
 
-**CairoMakie**: one entry per *labeled* plot object on `plot.axis`. Unlabeled
-objects are skipped, which is what drops the companion `band!` of a stacked
-stair plot (the `stairs!` carries the label there). `values` depends on the mark:
+**CairoMakie**: one entry per *labeled* plot object on `plot.axis`; unlabeled
+objects are skipped, which drops the companion `band!` of a stacked stair plot.
+`values` depends on the mark:
 
-- `:line` / `:stairs` — the y-values as drawn. Under `stack = true` with
-  `nofill = true` or `stair = true` that is the *cumulative outer envelope* of
-  the stack, not the series' own data, so it is only comparable to a
-  PlotlyLight trace when the call plotted a single series.
-- `:band` — the series' own (raw) contribution, recovered from the stored
-  `(lower, upper)` envelopes. `_signed_stack_bounds` stacks a net-positive
-  series upward, so its data is `upper - lower`, and a net-negative series
-  downward, so its data is `lower - upper`. The two are told apart by which
-  envelope is the stack baseline: the baseline is the envelope nearer zero, so
-  a downward-stacked band satisfies `sum(abs, upper) < sum(abs, lower)`. That
-  comparison is scale-free and needs no tolerance, which matters because a
-  category that generates nothing sums to float noise (`-3e-14`) and is then
-  stacked downward — an elementwise `upper .<= 0` test would misread the
-  neighbouring bands. A band of zero width reads as `0.0` either way.
-- `:bar` — the bar heights, which are the raw per-series values. A stacked bar
-  plot is a *single* `barplot!` carrying vector `label`/`color`/height
-  attributes; it is flattened here into one `PlotSeries` per bar so it lines up
-  with PlotlyLight's one-trace-per-series bar output.
+- `:line` / `:stairs` — the y-values as drawn, which under a stacked `nofill` or
+  `stair` call is the *cumulative outer envelope*, not the series' own data.
+- `:band` — the series' own contribution, recovered from the stored
+  `(lower, upper)` envelopes. The stack baseline is whichever envelope sits
+  nearer zero, so `sum(abs, upper) < sum(abs, lower)` identifies a
+  downward-stacked band; the comparison is scale-free, which matters because a
+  category generating nothing sums to float noise and is stacked downward.
+- `:bar` — the bar heights. A stacked bar plot is a *single* `barplot!` with
+  vector attributes, flattened here into one `PlotSeries` per bar to line up
+  with PlotlyLight's one-trace-per-series output.
 """
 function plot_series(plot::PlotlyLight.Plot)
     return [_plotly_series(trace) for trace in plot.data]
@@ -273,10 +264,9 @@ Y-values of the single series drawn with `label`.
 """
 function series_values(plot, label::AbstractString)
     matches = [s for s in plot_series(plot) if s.label == label]
-    length(matches) == 1 ||
-        error(
-            "expected exactly one series labeled $(repr(label)), found $(length(matches))",
-        )
+    length(matches) == 1 || error(
+        "expected exactly one series labeled $(repr(label)), found $(length(matches))",
+    )
     return only(matches).values
 end
 

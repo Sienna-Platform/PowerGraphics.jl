@@ -24,9 +24,7 @@ lightweight interactive plots saved as `html`. Pass it as
 """
 struct PlotlyLightBackend <: PlottingBackend end
 
-# File extension used when the caller does not pass `format`. It is dispatched
-# rather than hardcoded because a shared "png" default is simply wrong for
-# PlotlyLight, which can only write HTML and would rewrite the path (with a
-# warning) on every default-path save. An explicit user `format` still wins.
+# File extension used when the caller does not pass `format`; an explicit user
+# `format` still wins. See the Backend Parity Contract for why it is dispatched.
 _default_save_format(::CairoMakieBackend) = "png"
 _default_save_format(::PlotlyLightBackend) = "html"

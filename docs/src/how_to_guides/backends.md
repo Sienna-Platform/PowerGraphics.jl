@@ -48,5 +48,5 @@ functions will not be available.
 The two backends do not render identically. Before you swap one for the other — or before
 you change plotting behavior — check the [Backend Parity Contract](@ref), which lists what
 is guaranteed to match across backends and which differences are deliberate (save formats,
-time-axis ticks, bar-plot tick labels, y-limit anchoring, figure size, and the `save_plot`
-key words each backend accepts).
+time-axis ticks, bar-plot tick labels, y-limit anchoring, and the `save_plot` key words
+each backend accepts).

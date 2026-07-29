@@ -16,46 +16,28 @@ function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
+PowerGraphics._drawn_series_count(
+    plot::CairoMakiePlot,
+    ::PowerGraphics.CairoMakieBackend,
+) = plot.series_count
+
 function PowerGraphics._dataframe_plots_internal(
     plot::CairoMakiePlot,
-    variable::DataFrames.DataFrame,
     time_range::Array,
     backend::PowerGraphics.CairoMakieBackend,
     opts::PowerGraphics._PlotOptions;
     kwargs...,
 )
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
-
-    ndf = PowerGraphics.PA.no_datetime(variable)
-    column_names = DataFrames.names(ndf)
-    existing_series = plot.series_count
-    seriescolor = PowerGraphics.set_seriescolor(
-        get(
-            kwargs,
-            :seriescolor,
-            PowerGraphics.get_palette_seriescolor(
-                backend,
-                get(kwargs, :palette, PowerGraphics.PALETTE),
-            ),
-        ),
-        vcat(ones(existing_series), column_names),
-    )[(existing_series + 1):end]
+    data = opts.data
+    labels = opts.column_labels
+    seriescolor = opts.seriescolor
+    interval = opts.interval
 
     # CairoMakie.band doesn't allow for DateTime axes. Every plot now gets
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(ndf)
-    if opts.power_scale != 1.0
-        data = data ./ opts.power_scale
-    end
-    labels = [opts.label_fn(label) for label in column_names]
-
-    plot.axis.xlabel = "$time_interval"
+    plot.axis.xlabel = opts.x_label
     plot.axis.ylabel = opts.y_label
     if !isnothing(opts.title)
         plot.axis.title = opts.title
@@ -111,12 +93,13 @@ function PowerGraphics._dataframe_plots_internal(
         end
         plot.axis.xgridvisible = false
     else
-        draw_order = PowerGraphics._series_draw_order(data)
+        draw_order = PowerGraphics._series_draw_order(opts.series_negative)
         if opts.stack && !opts.nofill
             # Sign-aware stacked area: positive series stack upward from 0,
             # negative series (e.g. storage charging) stack downward from 0 so
             # charging renders below the zero axis.
-            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
+            lower_b, upper_b =
+                PowerGraphics._signed_stack_bounds(data, opts.series_negative)
             for ix in draw_order
                 lo = lower_b[:, ix]
                 up = upper_b[:, ix]
@@ -161,7 +144,8 @@ function PowerGraphics._dataframe_plots_internal(
         elseif opts.stack && opts.nofill
             # Sign-aware stacked lines: outer envelope of each band (positive
             # stacked up, negative stacked down).
-            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
+            lower_b, upper_b =
+                PowerGraphics._signed_stack_bounds(data, opts.series_negative)
             for ix in draw_order
                 outer = ifelse.(data[:, ix] .>= 0, upper_b[:, ix], lower_b[:, ix])
                 color = seriescolor[ix]

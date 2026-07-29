@@ -15,8 +15,7 @@ const PARITY_BACKENDS =
     (("cairomakie", CairoMakieBackend()), ("plotlylight", PlotlyLightBackend()))
 const PARITY_EXTENSION = Dict("cairomakie" => ".png", "plotlylight" => ".html")
 
-parity_time() =
-    collect(range(DateTime("2024-01-01T00:00:00"); step = Hour(1), length = 6))
+parity_time() = collect(range(DateTime("2024-01-01T00:00:00"); step = Hour(1), length = 6))
 
 # All-positive columns, so the draw order is the column order and the palette
 # selection can be checked position by position.
@@ -95,9 +94,7 @@ test_deprecated(f::Function) = @test_logs (:warn, r"deprecated") match_mode = :a
         plot_dataframe(df, time; backend = plotly, set_display = false),
     )
     assert_same_plot(
-        test_deprecated(
-            () -> plot_dataframe_plotly!(fresh(), df_dt; set_display = false),
-        ),
+        test_deprecated(() -> plot_dataframe_plotly!(fresh(), df_dt; set_display = false)),
         plot_dataframe!(fresh(), df_dt; backend = plotly, set_display = false),
     )
     assert_same_plot(
@@ -131,10 +128,16 @@ test_deprecated(f::Function) = @test_logs (:warn, r"deprecated") match_mode = :a
         plot_fuel(results_uc; backend = plotly, set_display = false),
     )
     assert_same_plot(
-        test_deprecated(
-            () -> plot_fuel_plotly!(fresh(), results_uc; set_display = false),
-        ),
+        test_deprecated(() -> plot_fuel_plotly!(fresh(), results_uc; set_display = false)),
         plot_fuel!(fresh(), results_uc; backend = plotly, set_display = false),
+    )
+    # `_report_plot_fuel` is private but reachable from report templates copied
+    # out of an earlier release, which call it positionally. It has no other
+    # caller in the repository, so without this it reads as dead code and gets
+    # deleted — which is exactly what happened once already.
+    assert_same_plot(
+        PG._report_plot_fuel(plotly, results_uc; set_display = false),
+        plot_fuel(results_uc; backend = plotly, set_display = false),
     )
     # `plot_powerdata` is deprecated twice over, so both layers warn.
     assert_same_plot(
@@ -148,12 +151,8 @@ test_deprecated(f::Function) = @test_logs (:warn, r"deprecated") match_mode = :a
             () -> PG.plot_powerdata_plotly!(fresh(), gen_uc; set_display = false),
         ),
         test_deprecated(
-            () -> PG.plot_powerdata!(
-                fresh(),
-                gen_uc;
-                backend = plotly,
-                set_display = false,
-            ),
+            () ->
+                PG.plot_powerdata!(fresh(), gen_uc; backend = plotly, set_display = false),
         ),
     )
 
@@ -163,28 +162,15 @@ test_deprecated(f::Function) = @test_logs (:warn, r"deprecated") match_mode = :a
     @test_throws ArgumentError plot_dataframe_plotly(df, time; backend = plotly)
     @test_throws ArgumentError plot_dataframe_plotly(df_dt; backend = plotly)
     @test_throws ArgumentError plot_dataframe_plotly!(fresh(), df_dt; backend = plotly)
-    @test_throws ArgumentError plot_dataframe_plotly!(
-        fresh(),
-        df,
-        time;
-        backend = plotly,
-    )
+    @test_throws ArgumentError plot_dataframe_plotly!(fresh(), df, time; backend = plotly)
     @test_throws ArgumentError plot_results_plotly(results_dict; backend = plotly)
-    @test_throws ArgumentError plot_results_plotly!(
-        fresh(),
-        results_dict;
-        backend = plotly,
-    )
+    @test_throws ArgumentError plot_results_plotly!(fresh(), results_dict; backend = plotly)
     @test_throws ArgumentError plot_demand_plotly(results_uc; backend = plotly)
     @test_throws ArgumentError plot_demand_plotly!(fresh(), results_uc; backend = plotly)
     @test_throws ArgumentError plot_fuel_plotly(results_uc; backend = plotly)
     @test_throws ArgumentError plot_fuel_plotly!(fresh(), results_uc; backend = plotly)
     @test_throws ArgumentError PG.plot_powerdata_plotly(gen_uc; backend = plotly)
-    @test_throws ArgumentError PG.plot_powerdata_plotly!(
-        fresh(),
-        gen_uc;
-        backend = plotly,
-    )
+    @test_throws ArgumentError PG.plot_powerdata_plotly!(fresh(), gen_uc; backend = plotly)
     # Passing a CairoMakie backend to a `_plotly` name must be rejected on the
     # same grounds, not quietly honored.
     @test_throws ArgumentError plot_dataframe_plotly(
@@ -231,6 +217,15 @@ end
     )
     @test readdir(svg_dir) == ["explicit.svg"]
 
+    # Extension matching must be case-insensitive on both backends. CairoMakie
+    # lowercases before checking, so an uppercase `.HTML` has to be recognized as
+    # HTML by PlotlyLight too rather than treated as an unsupported extension and
+    # silently rewritten to a different path than the caller asked for.
+    upper_path = joinpath(out_path, "upper.HTML")
+    pl_plot = plot_dataframe(df, time; backend = PlotlyLightBackend(), set_display = false)
+    @test @test_logs min_level = Logging.Warn save_plot(pl_plot, upper_path) == upper_path
+    @test isfile(upper_path)
+
     # CairoMakie cannot write HTML at all, so it must say so rather than write a
     # PNG under an .html name.
     cm_plot = plot_dataframe(df, time; set_display = false)
@@ -246,8 +241,7 @@ end
 
     # PlotlyLight can only write HTML, so a non-html extension is warned about
     # and rewritten rather than dropped.
-    pl_plot =
-        plot_dataframe(df, time; backend = PlotlyLightBackend(), set_display = false)
+    pl_plot = plot_dataframe(df, time; backend = PlotlyLightBackend(), set_display = false)
     rewritten = @test_logs (:warn, r"only supports HTML") match_mode = :any save_plot(
         pl_plot,
         joinpath(out_path, "rewritten.pdf"),
@@ -256,11 +250,8 @@ end
     @test isfile(rewritten)
     @test !isfile(joinpath(out_path, "rewritten.pdf"))
 
-    # One save per call, and one filename convention for every entry point.
-    # `_resolve_save_file` is the only place that builds a save path; when the
-    # wrappers built their own instead, `plot_demand` wrote the file twice (once
-    # from the delegated `_plot_dataframe!` and once from its own tail) under two
-    # different names, because only the wrapper replaced spaces with underscores.
+    # `_resolve_save_file` is the only place that builds a save path, so every
+    # entry point saves once and under one filename convention.
     spaced_dir = joinpath(out_path, "spaced")
     mkpath(spaced_dir)
     plot_dataframe(df, time; set_display = false, title = "My Plot", save = spaced_dir)
@@ -287,13 +278,7 @@ end
     # PlotlyLight-specific spelling), so a caller got a hairline plot on one
     # backend and a thick one on the other from identical code.
     for (_, backend) in PARITY_BACKENDS
-        p = plot_dataframe(
-            df,
-            time;
-            backend = backend,
-            set_display = false,
-            linewidth = 7,
-        )
+        p = plot_dataframe(df, time; backend = backend, set_display = false, linewidth = 7)
         @test series_linewidths(p) == [7.0, 7.0, 7.0]
     end
 
@@ -323,13 +308,7 @@ end
         (:stack => true, :stair => true),
     )
         for (backend_pkg, backend) in PARITY_BACKENDS
-            p = plot_dataframe(
-                df,
-                time;
-                backend = backend,
-                set_display = false,
-                mode...,
-            )
+            p = plot_dataframe(df, time; backend = backend, set_display = false, mode...)
             @test series_labels(p) == expected
         end
     end
@@ -390,8 +369,7 @@ end
         @test plot_title(p) == "Real Title"
         # The title reaches the figure verbatim but the file name replaces
         # spaces with underscores, which is what every entry point has always
-        # done. Centralizing the path in `_resolve_save_file` briefly dropped
-        # that for `plot_dataframe` alone.
+        # done.
         @test readdir(dir) == ["Real_Title" * ext]
     end
 
@@ -436,12 +414,10 @@ end
 
     # More series than palette entries cycles back to the start rather than
     # falling off the end, identically on both backends.
-    wide = DataFrames.DataFrame(
-        ["c$ix" => fill(Float64(ix), length(time)) for
-        ix in 1:(length(PG.PALETTE) + 2)],
-    )
-    wide_expected =
-        [_canonical_color(c.color) for c in vcat(PG.PALETTE, PG.PALETTE[1:2])]
+    wide = DataFrames.DataFrame([
+        "c$ix" => fill(Float64(ix), length(time)) for ix in 1:(length(PG.PALETTE) + 2)
+    ],)
+    wide_expected = [_canonical_color(c.color) for c in vcat(PG.PALETTE, PG.PALETTE[1:2])]
     for (_, backend) in PARITY_BACKENDS
         p = plot_dataframe(wide, time; backend = backend, set_display = false)
         @test series_colors(p) == wide_expected

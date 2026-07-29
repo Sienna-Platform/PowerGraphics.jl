@@ -2,6 +2,28 @@ function popkwargs(kwargs, kwarg)
     return Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
 end
 
+# Key-word documentation every public plot function accepts, interpolated into
+# each docstring rather than copied into it: the same twelve entries appeared in
+# eight docstrings and could only rot independently. Function-specific key words
+# stay written out at the call site.
+const _COMMON_PLOT_KWARGS = """
+- `set_display::Bool = true`: set to false to prevent the plots from displaying
+- `save::String = "file_path"`: set a file path to save the plots
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `seriescolor::Array`: Set different colors for the plots
+- `title::String = "Title"`: Set a title for the plots
+- `stack::Bool = true`: stack plot traces
+- `bar::Bool` : create bar plot
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
+- `stair::Bool`: Make a stair plot instead of a stack plot
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
+- `legend_font_size::Number`: override the legend label font size"""
+
+# Documented last in every plot docstring, and in the deprecated shims too.
+const _BACKEND_KWARG = """
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`."""
+
 # A CairoMakie plot is displayed through its `Figure`; a PlotlyLight plot is
 # displayed directly. Dispatching keeps the backend split out of plot bodies.
 _display_plot(::CairoMakieBackend, p) = display(p.figure)
@@ -40,19 +62,24 @@ function _translate_demand_aggregate(kwargs)
     return out
 end
 
-# `plot_demand` documents `start_time`/`len` as aliases of `initial_time`/`horizon`.
-# The `IS.Results` path resolves both spellings in `_time_window_indices`, but
-# `PowerAnalytics.get_load_data(::PSY.System)` reads only the canonical pair, so the
-# aliases have to be normalized before forwarding or a `PSY.System` plot would
-# silently ignore the requested window instead of slicing it.
-const _DEMAND_WINDOW_ALIASES = ((:initial_time, :start_time), (:horizon, :len))
+# `start_time`/`len` are documented aliases of `initial_time`/`horizon`. This is
+# the only place the two spellings are related; both the `IS.Results` row slicing
+# in `_time_window_indices` and the `PSY.System` forwarding below read it.
+const _WINDOW_ALIASES = (initial_time = :start_time, horizon = :len)
 
+function _window_kwarg(kwargs, canonical::Symbol)
+    return get(kwargs, canonical, get(kwargs, _WINDOW_ALIASES[canonical], nothing))
+end
+
+# `PowerAnalytics.get_load_data(::PSY.System)` reads only the canonical spellings,
+# so an aliased window has to be normalized before forwarding or a `PSY.System`
+# plot would silently ignore it. Returns a fresh `Dict{Symbol,Any}` regardless so
+# callers can keep mutating it.
 function _translate_demand_window(kwargs)
     out = Dict{Symbol, Any}(kwargs)
-    for (canonical, alias) in _DEMAND_WINDOW_ALIASES
-        if !haskey(out, canonical) && haskey(out, alias)
-            out[canonical] = out[alias]
-        end
+    for canonical in keys(_WINDOW_ALIASES)
+        value = _window_kwarg(out, canonical)
+        isnothing(value) || (out[canonical] = value)
     end
     return out
 end
@@ -93,14 +120,22 @@ function _resolve_power_units(df::DataFrames.DataFrame, kwargs)
         else
             # stacked plots: peak is the largest per-timestep positive total;
             # also guard against a single dominant (possibly negative) series.
-            max(
-                maximum(sum(x -> max(x, 0.0), mat; dims = 2)),
-                maximum(abs, mat),
-            )
+            max(maximum(sum(x -> max(x, 0.0), mat; dims = 2)), maximum(abs, mat))
         end
         divisor, unit = _auto_power_unit(peak)
     end
     return (something(user_ylabel, unit), divisor)
+end
+
+"""
+Per-series net-sign classification of a `time × series` matrix: `true` where the
+series' values sum to a net-negative total. Every rule that decides which side of
+the zero axis a series belongs on — `_signed_stack_bounds`, `_series_draw_order`,
+and the PlotlyLight `stackgroup` split — reads this one answer, so the three
+cannot disagree.
+"""
+function _series_is_negative(data::AbstractMatrix)
+    return [sum(view(data, :, ix)) < zero(eltype(data)) for ix in axes(data, 2)]
 end
 
 """
@@ -112,22 +147,23 @@ positive generation stack. Returns `(lower, upper)` matrices the same size as
 `data`; band `ix` is `[lower[:,ix], upper[:,ix]]`.
 """
 function _signed_stack_bounds(data::AbstractMatrix)
+    return _signed_stack_bounds(data, _series_is_negative(data))
+end
+
+# Classification is by *series* (not by value): a positive-type series always
+# stacks on the positive baseline — even at timesteps where it is 0 (e.g. PV at
+# night) it keeps a zero-width band *in place* rather than jumping to the
+# negative baseline, which left whitespace holes and slash lines.
+function _signed_stack_bounds(data::AbstractMatrix, negative::AbstractVector{Bool})
     nt, ns = size(data)
     lower = zeros(eltype(data), nt, ns)
     upper = zeros(eltype(data), nt, ns)
     pos = zeros(eltype(data), nt)
     neg = zeros(eltype(data), nt)
-    # Classify each *series* (not each value) by its net sign, matching the
-    # PlotlyLight backend's `sign_group`. A positive-type series always stacks
-    # on the positive baseline — even at timesteps where it is 0 (e.g. PV at
-    # night) it keeps a zero-width band *in place* rather than jumping to the
-    # negative baseline (which left whitespace holes / slash lines). Negative-
-    # type series (e.g. storage charging, source input) always stack downward from 0.
     for ix in 1:ns
-        series_negative = sum(@view data[:, ix]) < zero(eltype(data))
         for t in 1:nt
             v = data[t, ix]
-            if series_negative
+            if negative[ix]
                 upper[t, ix] = neg[t]
                 lower[t, ix] = neg[t] + v
                 neg[t] = lower[t, ix]
@@ -147,13 +183,13 @@ sum to a net-negative total first, then all the others, each group keeping its
 original column order. Net-negative series (storage charging, source input)
 stack *below* the zero axis, so drawing them first leaves the positive
 generation bands and lines on top of them instead of hidden behind their fill.
-The net-sign classification matches `_signed_stack_bounds`, which decides on
-which side of zero each series is stacked.
 """
-function _series_draw_order(data::AbstractMatrix)
-    negative =
-        [sum(view(data, :, ix)) < zero(eltype(data)) for ix in 1:size(data, 2)]
+function _series_draw_order(negative::AbstractVector{Bool})
     return vcat(findall(negative), findall(.!negative))
+end
+
+function _series_draw_order(data::AbstractMatrix)
+    return _series_draw_order(_series_is_negative(data))
 end
 
 # Old spelling of "this plot has no title". User code still passes it, so it is
@@ -164,15 +200,18 @@ const _NO_TITLE_SENTINEL = " "
 const _UNTITLED_SAVE_NAME = "dataframe"
 
 """
-Drawing options shared by every plotting backend, resolved once by
-`_plot_dataframe!` so that the recipes in `ext/` consume already-decided
-values instead of each deriving its own defaults (which is how the two backends
-drifted apart in the first place). Every field is canonical: `nofill`,
-`linestyle`, and `linewidth` are always filled in, `title` is `nothing` when the
-plot has no title, and `save_file` is the complete path to write or `nothing`
-when the plot is not being saved.
+Everything a backend recipe needs to draw one call, resolved once by
+`_plot_dataframe!` so that the recipes in `ext/` consume already-decided values
+instead of each deriving its own defaults. Every field is canonical: `data` is
+the plotted `time × series` matrix with `power_scale` already applied,
+`column_labels` are the finished legend labels, `seriescolor` holds one color per
+drawn series (continuing the cycle past any series already on the plot),
+`series_negative` is the net-sign classification the stacking and draw-order
+rules share, `nofill`/`linestyle`/`linewidth` are always filled in, `title` is
+`nothing` when the plot has no title, and `save_file` is the complete path to
+write or `nothing` when the plot is not being saved.
 """
-struct _PlotOptions{F}
+struct _PlotOptions{C}
     bar::Bool
     stack::Bool
     stair::Bool
@@ -181,12 +220,17 @@ struct _PlotOptions{F}
     linewidth::Float64
     power_scale::Float64
     y_label::String
+    x_label::String
     title::Union{String, Nothing}
     save_file::Union{String, Nothing}
     set_display::Bool
     legend_position::Symbol
     legend_font_size::Union{Float64, Nothing}
-    label_fn::F
+    data::Matrix{Float64}
+    column_labels::Vector{String}
+    seriescolor::Vector{C}
+    series_negative::Vector{Bool}
+    interval::Float64
 end
 
 # `linestyle::Symbol` is the canonical spelling. `line_dash::String` was the
@@ -219,22 +263,43 @@ function _resolve_save_file(backend::PlottingBackend, title, kwargs)
     return joinpath(save_dir, "$(name).$(format)")
 end
 
-function _resolve_legend_font_size(kwargs)
-    font_size = get(kwargs, :legend_font_size, nothing)
-    if isnothing(font_size)
-        return nothing
-    end
-    return Float64(font_size)
-end
-
 # Key word values arrive with whatever type the caller wrote (`linewidth = 3`,
 # `power_scale = 1000`), so each one is converted to the field type here: the
 # parametric struct's default constructor matches on the exact type and would
 # otherwise reject them.
-function _PlotOptions(backend::PlottingBackend, kwargs)
+function _PlotOptions(
+    p,
+    variable::DataFrames.DataFrame,
+    time_range::Vector,
+    backend::PlottingBackend,
+    kwargs,
+)
     bar = get(kwargs, :bar, false)
     stack = get(kwargs, :stack, false)
     title = _resolve_title(kwargs)
+    font_size = get(kwargs, :legend_font_size, nothing)
+    power_scale = Float64(get(kwargs, :power_scale, 1.0))
+
+    # The `DateTime` column is stripped, the labels are applied and the scaling
+    # is done once here; a recipe that repeated any of the three would be free to
+    # repeat it differently.
+    ndf = PA.no_datetime(variable)
+    data = Matrix{Float64}(ndf)
+    power_scale == 1.0 || (data ./= power_scale)
+    label_fn = get(kwargs, :label_fn, label_short)
+    column_labels = [string(label_fn(name)) for name in DataFrames.names(ndf)]
+
+    # The color cycle continues past whatever is already drawn on `p`, so a `!`
+    # call layering a second set of traces does not restart at palette entry one.
+    drawn = _drawn_series_count(p, backend)
+    colors = get(
+        kwargs,
+        :seriescolor,
+        get_palette_seriescolor(backend, get(kwargs, :palette, PALETTE)),
+    )
+    seriescolor = set_seriescolor(colors, vcat(ones(drawn), column_labels))[(drawn + 1):end]
+
+    step = time_range[2] - time_range[1]
     return _PlotOptions(
         bar,
         stack,
@@ -245,14 +310,21 @@ function _PlotOptions(backend::PlottingBackend, kwargs)
         get(kwargs, :nofill, !bar && !stack),
         _resolve_linestyle(kwargs),
         Float64(get(kwargs, :linewidth, 1)),
-        Float64(get(kwargs, :power_scale, 1.0)),
+        power_scale,
         String(get(kwargs, :y_label, "")),
+        string(IS.convert_compound_period(length(time_range) * step)),
         title,
         _resolve_save_file(backend, title, kwargs),
         get(kwargs, :set_display, true),
         Symbol(get(kwargs, :legend_position, :right)),
-        _resolve_legend_font_size(kwargs),
-        get(kwargs, :label_fn, label_short),
+        isnothing(font_size) ? nothing : Float64(font_size),
+        data,
+        column_labels,
+        seriescolor,
+        _series_is_negative(data),
+        # One hour expressed in the data's own time step: a bar plot divides its
+        # summed totals by it to report energy per hour.
+        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(step),
     )
 end
 
@@ -265,19 +337,18 @@ in PowerAnalytics 1.4, mishandles time windows on simulation results (`len` is
 treated as an execution count), so local row slicing is the only way to
 preserve the old windowing behavior.
 """
-# TODO upstream: fix `compute` time-window kwargs in PowerAnalytics, then
-# forward `start_time`/`len` directly.
+# TODO upstream: fix `compute` time-window key words in PowerAnalytics
+# (https://github.com/PabloBotin/PowerAnalytics.jl/issues/1), then forward
+# `start_time`/`len` directly.
 function _time_window_indices(time::AbstractVector, kwargs)
-    start_time = get(kwargs, :initial_time, get(kwargs, :start_time, nothing))
-    len = get(kwargs, :horizon, get(kwargs, :len, nothing))
+    start_time = _window_kwarg(kwargs, :initial_time)
+    len = _window_kwarg(kwargs, :horizon)
     i0 = if isnothing(start_time)
         1
     else
         found = findfirst(==(start_time), time)
         isnothing(found) && throw(
-            ArgumentError(
-                "start_time $start_time is not one of the results timestamps",
-            ),
+            ArgumentError("start_time $start_time is not one of the results timestamps"),
         )
         found
     end
@@ -314,24 +385,12 @@ plot = plot_demand(res)
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `title::String`: Set a title for the plots
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path always aggregates to a single "Load" trace and ignores `aggregate` entirely.
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
+$(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """  # ^ temporary workaround for https://github.com/Sienna-Platform/PowerSystems.jl/issues/1598
 function plot_demand(
     result::Union{IS.Results, PSY.System};
@@ -368,25 +427,15 @@ _demand_selector(::Nothing) = PSY.rebuild_selector(PA.Selectors.all_loads; group
 _demand_selector(filter_func::Function) =
     PSY.make_selector(filter_func, PSY.ElectricLoad; groupby = :all)
 
-# The same pool narrowed to one concrete load type. The variable/parameter
-# fallback has to be resolved per type rather than over the whole load pool at
-# once, because `PowerAnalytics.compute` throws as soon as *any* component in a
-# selector is missing the result: on a mixed static/dispatchable system a
-# whole-pool `calc_active_power` call fails on the static loads, every load then
-# falls back to the forecast, and the opposing sign conventions silently cancel.
-# Per type is also what the old pipeline did — `add_fixed_parameters!` keyed its
-# variable-vs-parameter choice on the component type — and it costs one or two
-# reads per load type rather than one per load.
+# The same pool narrowed to one concrete load type, which is what the old
+# pipeline keyed on too. Resolving the `_DEMAND_METRICS` fallback per type is
+# required because `PowerAnalytics.compute` throws as soon as *any* component in
+# a selector is missing the result, so a whole-pool call on a mixed system would
+# fall every load back to the forecast and cancel the signs described above.
 _demand_type_selector(::Nothing, load_type::Type{<:PSY.ElectricLoad}) =
     PSY.make_selector(load_type; groupby = :all)
 _demand_type_selector(filter_func::Function, load_type::Type{<:PSY.ElectricLoad}) =
     PSY.make_selector(filter_func, load_type; groupby = :all)
-
-# Concrete load types present in the pool, ordered deterministically so that the
-# summation order (and the floating-point rounding it implies) is reproducible.
-function _demand_component_types(components)
-    return sort!(unique(typeof(c) for c in components); by = nameof)
-end
 
 # Compute one metric over one selector, returning `(time, values)` as fresh
 # vectors, or `nothing` when that result is not stored for the selected
@@ -409,8 +458,11 @@ function _demand_data(result::IS.Results; kwargs...)
     filter_func = get(kwargs, :filter_func, nothing)
     time = Dates.DateTime[]
     total = Float64[]
-    for load_type in
-        _demand_component_types(PSY.get_components(_demand_selector(filter_func), result))
+    # Concrete load types present in the pool, ordered deterministically so that
+    # the summation order (and the floating-point rounding it implies) is
+    # reproducible.
+    pool = PSY.get_components(_demand_selector(filter_func), result)
+    for load_type in sort!(unique(typeof(c) for c in pool); by = nameof)
         selector = _demand_type_selector(filter_func, load_type)
         for metric in _DEMAND_METRICS
             r = _try_selector_metric(metric, result, selector)
@@ -451,6 +503,117 @@ function _demand_data(system::PSY.System; kwargs...)
     return (PA.combine_categories(load.data), load.time)
 end
 
+# Unset key words are dropped rather than forwarded as `nothing`, because the
+# window readers distinguish "absent" from "nothing": forwarding an explicit
+# `initial_time = nothing` would satisfy the lookup and stop `start_time` from
+# ever being consulted.
+function _demand_frame(result; kwargs...)
+    passed = Dict{Symbol, Any}((k, v) for (k, v) in kwargs if !isnothing(v))
+    data, time = _demand_data(result; passed...)
+    return DataFrames.insertcols(data, 1, PA.DATETIME_COL => time)
+end
+
+"""
+    get_demand_data(results)
+
+The demand data [`plot_demand`](@ref) draws from simulation results, as a
+`DataFrame` whose first column is the `DateTime` axis and whose second is the
+aggregated `"Load"` column. Use it to tabulate or post-process the same numbers
+the plot shows.
+
+Reading a single load metric instead does **not** give the same answer: under a
+controllable load formulation (`PowerLoadInterruption`, `PowerLoadDispatch`) the
+load forecast parameter is the *requested* demand and PowerSimulations stores it
+with the opposite sign, so a forecast-only total is understated on a controllable
+system and cancels itself on a mixed one. Resolving that per concrete load type
+is what this function exists to encapsulate.
+
+Results are always aggregated into a single column; use
+[`get_demand_data(::PowerSystems.System)`](@ref) for the per-component breakdown
+that accepts `aggregate`.
+
+When the results hold no load data this returns a 0-row frame, where
+[`plot_demand`](@ref) instead throws an `ArgumentError`. An accessor's caller can
+test `nrow` and carry on; a plot with nothing to draw is a mistake worth
+reporting, so the two deliberately differ.
+
+!!! note
+
+    The time windowing below is applied locally because `PowerAnalytics.compute`
+    mishandles window key words on simulation results. That workaround is
+    temporary, but this function is exported and so outlives it: if
+    PowerAnalytics grows a correct load metric the internals change and the
+    signature stays.
+
+# Arguments
+
+- `results::`[`InfrastructureSystems.Results`](@extref): results to read the demand from
+    (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
+
+# Accepted Key Words
+
+- `horizon::Int64`: number of time periods to return, counted from `initial_time` (`len` is accepted as an alias)
+- `initial_time::DateTime`: start at a time other than the results initial time (`start_time` is accepted as an alias)
+- `filter_func::Function`: filter components included in the total
+"""
+function get_demand_data(
+    results::IS.Results;
+    filter_func = nothing,
+    initial_time = nothing,
+    start_time = nothing,
+    horizon = nothing,
+    len = nothing,
+)
+    return _demand_frame(
+        results;
+        filter_func = filter_func,
+        initial_time = initial_time,
+        start_time = start_time,
+        horizon = horizon,
+        len = len,
+    )
+end
+
+"""
+    get_demand_data(system)
+
+The demand data [`plot_demand`](@ref) draws from a `System`, as a `DataFrame`
+whose first column is the `DateTime` axis. Unlike the
+[`get_demand_data(::InfrastructureSystems.Results)`](@ref) method, this one reads
+the load time series rather than solved variables, so `aggregate` selects how the
+columns are grouped.
+
+# Arguments
+
+- `system::`[`PowerSystems.System`](@extref): system to read the demand from
+
+# Accepted Key Words
+
+- `horizon::Int64`: number of time periods to return, counted from `initial_time` (`len` is accepted as an alias)
+- `initial_time::DateTime`: start at a time other than the system initial time (`start_time` is accepted as an alias)
+- `aggregate::String = "System", "PowerLoad", or "Bus"`: group the demand columns by something other than generator
+- `filter_func::Function`: filter components included in the total
+"""
+function get_demand_data(
+    system::PSY.System;
+    aggregate = nothing,
+    filter_func = nothing,
+    initial_time = nothing,
+    start_time = nothing,
+    horizon = nothing,
+    len = nothing,
+)
+    return _demand_frame(
+        system;
+        aggregate = aggregate,
+        filter_func = filter_func,
+        initial_time = initial_time,
+        start_time = start_time,
+        horizon = horizon,
+        len = len,
+    )
+end
+
 function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     bar = get(kwargs, :bar, false)
@@ -464,15 +627,10 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     if isempty(load_agg)
         throw(ArgumentError("No load data found"))
     end
-    # Build a mutable copy with defaults so we splat exactly once below. `:save`,
-    # `:title`, and `:set_display` are dropped here, as they are in
-    # `_plot_results!` and `_plot_fuel!`, because this wrapper passes its own
-    # values for them explicitly and does the saving and displaying itself. A
-    # splatted key word wins over an explicit one, so leaving them in made the
-    # delegate save and display a second time.
+    # A splatted key word wins over an explicit one, so the key words this
+    # wrapper passes itself — and acts on itself — are dropped from the splat.
     kwargs = Dict{Symbol, Any}(
-        (k, v) for
-        (k, v) in kwargs if k ∉ [:filter_func, :save, :title, :set_display]
+        (k, v) for (k, v) in kwargs if k ∉ [:filter_func, :save, :title, :set_display]
     )
     # Optional per-timestep load added to demand (e.g. storage charging or source
     # input, so the net-load line matches the top of the generation stack in `plot_fuel!`).
@@ -532,28 +690,16 @@ or extends `plot`; pass the `backend` key word to pick the renderer.
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `title::String`: Set a title for the plots
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand by
     [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.Bus`](@extref),
     rather than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path
     always aggregates to a single "Load" trace and ignores `aggregate` entirely.
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
+$(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """
 function plot_demand!(
     p,
@@ -590,19 +736,8 @@ plot = plot_dataframe(df, time_range)
 
 # Accepted Key Words
 - `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_COMMON_PLOT_KWARGS)
+$(_BACKEND_KWARG)
 """
 function plot_dataframe(
     df::DataFrames.DataFrame;
@@ -633,10 +768,21 @@ function plot_dataframe(
     )
 end
 
+# A `time_range` handed in as a `DataFrame` carries the axis in its first column.
 function _plot_dataframe!(
     p,
     variable::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange},
+    time_range::DataFrames.DataFrame,
+    backend;
+    kwargs...,
+)
+    return _plot_dataframe!(p, variable, time_range[:, 1], backend; kwargs...)
+end
+
+function _plot_dataframe!(
+    p,
+    variable::DataFrames.DataFrame,
+    time_range::Union{Array, StepRange},
     backend;
     kwargs...,
 )
@@ -649,14 +795,12 @@ function _plot_dataframe!(
         @warn "Plot dataframe empty: skipping plot creation"
         return p
     end
-    tr =
-        typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
+    tr = collect(time_range)
     return _dataframe_plots_internal(
         p,
-        variable,
         tr,
         backend,
-        _PlotOptions(backend, kwargs);
+        _PlotOptions(p, variable, tr, backend, kwargs);
         kwargs...,
     )
 end
@@ -678,19 +822,8 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 
 # Accepted Key Words
 - `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_COMMON_PLOT_KWARGS)
+$(_BACKEND_KWARG)
 """
 function plot_dataframe!(
     p,
@@ -716,39 +849,38 @@ end
 # Split a dict of result DataFrames from its shared time axis: `DateTime`
 # columns are stripped (copying) from every value and the time axis is taken
 # from the first value's `DateTime` column, replicating the shape the old
-# `PowerAnalytics.PowerData` constructor produced.
+# `PowerAnalytics.PowerData` constructor produced. The strip is not redundant
+# with the one inside `PowerAnalytics.combine_categories`, because
+# `_flatten_result_categories` emits one trace per stored column and would
+# otherwise plot the `DateTime` column as a series.
 function _split_results_time(results::Dict{String, DataFrames.DataFrame})
-    data =
-        Dict{String, DataFrames.DataFrame}(k => PA.no_datetime(v) for (k, v) in results)
+    data = Dict{String, DataFrames.DataFrame}(k => PA.no_datetime(v) for (k, v) in results)
     return (data, first(values(results)).DateTime)
 end
 
-# Sum each entry's frame into a single column, preserving the old
-# `PowerAnalytics.combine_categories` behavior: `names` restricts and orders
-# the entries, `aggregate` maps each entry's `time × column` matrix to one
-# column. Empty entries are dropped silently; when every entry is empty the
-# result is an empty `DataFrame`.
+# `PowerAnalytics.combine_categories` owns the aggregation itself: `names`
+# restricts and orders the entries, `aggregate` maps each entry's `time × column`
+# matrix to one column, empty entries are dropped silently, and an all-empty
+# input yields an empty `DataFrame`. The only thing added here is the error for
+# an unknown entry, which upstream reports as a bare `KeyError` that names
+# neither the key word nor the entries that would have been valid.
 function _combine_result_categories(
     data::Dict{String, DataFrames.DataFrame};
     names::Union{Vector{String}, Vector{Symbol}, Nothing} = nothing,
     aggregate::Union{Function, Nothing} = nothing,
 )
-    aggregate = something(aggregate, x -> sum(x; dims = 2))
     # `Vector{Symbol}` is accepted for the deprecated `plot_powerdata` path,
     # whose `PowerData` dicts were keyed by `Symbol` under the old API.
-    names = String.(something(names, collect(keys(data))))
-    cols = Pair{String, Any}[]
-    for k in names
+    entries = String.(something(names, collect(keys(data))))
+    for k in entries
         haskey(data, k) || throw(
             ArgumentError(
                 "`names` entry $(repr(k)) is not one of the results entries: " *
                 "$(sort!(collect(keys(data))))",
             ),
         )
-        isempty(data[k]) && continue
-        push!(cols, k => vec(aggregate(Matrix(data[k]))))
     end
-    return DataFrames.DataFrame(cols)
+    return PA.combine_categories(data; names = entries, aggregate = aggregate)
 end
 
 # Flatten without aggregation: one trace per stored column, labeled
@@ -813,19 +945,8 @@ stripped and the time axis is taken from the first entry.
 - `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
 - `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
 - `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_COMMON_PLOT_KWARGS)
+$(_BACKEND_KWARG)
 """
 function plot_results(
     results::Dict{String, DataFrames.DataFrame};
@@ -850,19 +971,8 @@ Makes a plot from a results dictionary onto an existing plot handle. Each entry'
 - `combine_categories::Bool = true` : plot one aggregated trace per entry (the default), or one trace per column of each entry when `false`
 - `names::Vector{String}`: subset and order of the entries to plot when `combine_categories = true`
 - `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_COMMON_PLOT_KWARGS)
+$(_BACKEND_KWARG)
 """
 function plot_results!(
     p,
@@ -903,20 +1013,9 @@ plot = plot_fuel(res)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
+$(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """
 function plot_fuel(
     result::IS.Results;
@@ -926,14 +1025,13 @@ function plot_fuel(
     return plot_fuel!(_empty_plot(backend), result; backend = backend, kwargs...)
 end
 
-# Entry point for the Weave report template so the template stays
-# backend-agnostic. The `(backend, result)` argument order is part of the
-# template's contract — see `report_templates/generic_report_template.jmd`,
-# which users may have copied — so it is kept even though `backend` is now a key
-# word everywhere else.
-function _report_plot_fuel(backend::PlottingBackend, result; kwargs...)
-    return plot_fuel(result; backend = backend, kwargs...)
-end
+# The `(backend, result)` positional order is part of the report template's
+# contract: `report` renders a user-supplied `.jmd`, and the shipped
+# `generic_report_template.jmd` has called this since before `backend` became a
+# key word. Templates copied from an earlier release still call it, so removing
+# it would throw `UndefVarError` on their next `report` rather than degrade.
+_report_plot_fuel(backend::PlottingBackend, result; kwargs...) =
+    plot_fuel(result; backend = backend, kwargs...)
 
 # The fuel stack is assembled on the PowerAnalytics metrics/selectors API, one
 # metric evaluation per component, because the old pipeline's semantics cannot
@@ -944,7 +1042,8 @@ end
 
 # TODO upstream: PowerAnalytics has no built-in metrics for these entry types
 # (it should export `calc_system_slack_down` and forecast metrics for the
-# storage/source time-series parameters); build them locally until then.
+# storage/source time-series parameters); build them locally until then. See
+# https://github.com/PabloBotin/PowerAnalytics.jl/issues/4.
 const _CALC_POWER_OUTPUT =
     PA.make_component_metric_from_entry("PowerOutput", PA.PSI.PowerOutput)
 const _CALC_ACTIVE_POWER_IN_FORECAST = PA.make_component_metric_from_entry(
@@ -1188,9 +1287,11 @@ _pool_components(::Type{T}, result::IS.Results, ::Nothing) where {T} =
 # The components eligible for fuel plotting: available generators, storage, and
 # sources (never loads), optionally restricted by a user filter, matching the
 # old `make_fuel_dictionary` iteration. The `storage`/`sources` kwargs of
-# `plot_fuel` drop those roles entirely, like the old key filters did.
+# `plot_fuel` drop those roles entirely, like the old key filters did. The pool
+# is deliberately heterogeneous, so its element type cannot be concrete; it is
+# narrowed to the mapping's own root type rather than left at `PSY.Component`.
 function _injector_pool(result::IS.Results, filter_func, storage::Bool, sources::Bool)
-    pool = Vector{PSY.Component}()
+    pool = Vector{_MAPPING_ROOT_TYPE}()
     append!(pool, _pool_components(PSY.Generator, result, filter_func))
     storage && append!(pool, _pool_components(PSY.Storage, result, filter_func))
     sources && append!(pool, _pool_components(PSY.Source, result, filter_func))
@@ -1226,7 +1327,7 @@ struct _FuelRule
     gen_type::Type
     pm_wild::Bool
     fuel_wild::Bool
-    members::Set{PSY.Component}
+    members::Set{_MAPPING_ROOT_TYPE}
 end
 
 # The component type a category sub-selector filters on. PowerAnalytics builds
@@ -1249,12 +1350,16 @@ function _mapping_rule_specs(raw_mapping::AbstractDict, category::AbstractString
     for rule in get(raw_mapping, category, ())
         gen_type, prime_mover, fuel =
             PA.parse_fuel_category(rule; root_type = _MAPPING_ROOT_TYPE)
-        gen_type <: Union{} && continue
+        gen_type === Union{} && continue
         push!(specs, (gen_type, isnothing(prime_mover), isnothing(fuel)))
     end
     return specs
 end
 
+# TODO upstream: PowerAnalytics should either expose each mapping rule's
+# specificity or document the one-sub-selector-per-rule ordering this replay
+# depends on, so the ladder below can be deleted. Not yet filed.
+#
 # `parse_generator_mapping_file` broadcasts `make_fuel_component_selector` over a
 # category's rule list, drops the `nothing`s, and wraps the survivors in a
 # `ListComponentSelector`, whose `get_groups` returns its contents verbatim — so
@@ -1303,7 +1408,8 @@ function _fuel_rules(
         specs = _mapping_rule_specs(raw_mapping, category)
         _validate_rule_correspondence(category, mapping_file, groups, specs)
         for (group, (gen_type, pm_wild, fuel_wild)) in zip(groups, specs)
-            members = Set{PSY.Component}(PSY.get_components(filter_func, group, result))
+            members =
+                Set{_MAPPING_ROOT_TYPE}(PSY.get_components(filter_func, group, result))
             isempty(members) && continue
             push!(rules, _FuelRule(category, gen_type, pm_wild, fuel_wild, members))
         end
@@ -1335,8 +1441,8 @@ function _assign_fuel_categories(
     filter_func,
 )
     rules = _fuel_rules(result, categories, mapping_file, filter_func)
-    assignments = Dict{String, Vector{PSY.Component}}()
-    unmatched = PSY.Component[]
+    assignments = Dict{String, Vector{_MAPPING_ROOT_TYPE}}()
+    unmatched = _MAPPING_ROOT_TYPE[]
     for comp in pool
         best_category = nothing
         best_rank = (typemax(Int), true, true)
@@ -1352,7 +1458,7 @@ function _assign_fuel_categories(
             push!(unmatched, comp)
         else
             comps = get!(assignments, best_category) do
-                Vector{PSY.Component}()
+                Vector{_MAPPING_ROOT_TYPE}()
             end
             push!(comps, comp)
         end
@@ -1419,9 +1525,9 @@ function _fuel_data(result::IS.Results, palette_categories::Vector{String}; kwar
     matched = intersect(palette_categories, collect(keys(acc.cols)))
     remainder = sort(setdiff(collect(keys(acc.cols)), palette_categories))
     window = _time_window_indices(acc.time, kwargs)
-    fuel_agg = DataFrames.DataFrame(
-        [name => acc.cols[name][window] for name in vcat(matched, remainder)],
-    )
+    fuel_agg = DataFrames.DataFrame([
+        name => acc.cols[name][window] for name in vcat(matched, remainder)
+    ],)
     return (fuel_agg, acc.time[window])
 end
 
@@ -1444,11 +1550,8 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
     kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
 
-    seriescolor = get(
-        kwargs,
-        :seriescolor,
-        match_fuel_colors(fuel_agg, backend; palette = palette),
-    )
+    seriescolor =
+        get(kwargs, :seriescolor, match_fuel_colors(fuel_agg, backend; palette = palette))
     p = _plot_dataframe!(
         p,
         fuel_agg,
@@ -1527,21 +1630,10 @@ renderer.
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool = !bar && !stack`: draw traces without an area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
+$(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """
 function plot_fuel!(
     p,

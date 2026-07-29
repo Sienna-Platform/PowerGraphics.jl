@@ -7,6 +7,7 @@ export plot_demand, plot_demand!
 export plot_dataframe, plot_dataframe!
 export plot_results, plot_results!
 export plot_fuel, plot_fuel!
+export get_demand_data
 export report
 export save_plot
 export label_component, label_variable, label_acronym, label_first_word
@@ -46,7 +47,8 @@ include("deprecated.jl")
 
 # Methods for these are provided by package extensions:
 #   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt
-#   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend, ::_PlotOptions; kwargs...)` — same
+#   - `_drawn_series_count(plot, ::PlottingBackend)` — same
+#   - `_dataframe_plots_internal(p, time, ::PlottingBackend, ::_PlotOptions; kwargs...)` — same
 #   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
 #   - `report(results, out_path, template; kwargs...)` — WeaveExt
 function report end
@@ -76,9 +78,14 @@ function _no_backend_loaded(::PlotlyLightBackend)
 end
 
 _empty_plot(backend::PlottingBackend) = _no_backend_loaded(backend)
+
+# How many series a plot handle already carries, so that `_PlotOptions` can
+# continue the color cycle instead of restarting it on a `!` call. Each backend
+# answers from its own plot object.
+_drawn_series_count(::Any, backend::PlottingBackend) = _no_backend_loaded(backend)
+
 function _dataframe_plots_internal(
     ::Any,
-    ::DataFrames.DataFrame,
     ::Any,
     backend::PlottingBackend,
     ::_PlotOptions;

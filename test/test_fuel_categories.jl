@@ -24,8 +24,7 @@ const FUELCAT_SYS = PSI.get_system(fuelcat_results_uc)
     # first-seen category wins and these assertions fail deterministically rather
     # than depending on `Dict` iteration order.
     ordered = [
-        name => categories[name] for
-        name in
+        name => categories[name] for name in
         ["BroadThermal", "NGCombustionTurbine", "CoalOnly", "Hydropower", "PV", "Wind"]
     ]
     thermal = collect(get_components(ThermalStandard, FUELCAT_SYS))
@@ -39,9 +38,8 @@ const FUELCAT_SYS = PSI.get_system(fuelcat_results_uc)
         nothing,
     )
     @test isempty(unmatched)
-    assigned = Dict(
-        get_name(c) => category for (category, comps) in assignments for c in comps
-    )
+    assigned =
+        Dict(get_name(c) => category for (category, comps) in assignments for c in comps)
 
     # Prime-mover + fuel specific beats the type-only rule over the same gentype.
     @test assigned["Solitude"] == "NGCombustionTurbine"
@@ -163,10 +161,41 @@ end
         # generator pool, so anything landing there means a rule stopped matching.
         @test !("Other" in labels)
 
-        # The narrow categories must carry real energy -- an empty category would
-        # be dropped as an all-zero column, so its mere presence is already a
-        # signal, but pin the sign too.
-        @test sum(series_values(p, "NGCombustionTurbine")) > 0
-        @test sum(series_values(p, "CoalOnly")) > 0
+        # Each narrow category's column is exactly the sum of its member
+        # components' generation. That is the property the specificity ranking
+        # decides: if the ranking degraded and Alta/Solitude were refiled under
+        # "BroadThermal", this column would stop matching its oracle.
+        #
+        # The member lists are spelled out rather than read back from
+        # `_assign_fuel_categories` on purpose. Deriving them from the code
+        # under test would move the oracle in lockstep with the defect and pin
+        # nothing; hardcoding them states the mapping the fixture YAML documents
+        # as intended, which is what a regression has to violate.
+        #
+        # Do NOT reintroduce a `sum(...) > 0` check here. Of the fixture's
+        # thermal units only "Brighton" is ever committed -- "Alta", "Solitude",
+        # "Park City" and "Sundance" all sit at zero -- so those columns are
+        # floating-point noise (order 1e-15 MW) whose sign flips between equally
+        # optimal solutions of the UC. A sign assertion on them passes or fails
+        # on the solver's rounding, not on this package's behavior.
+        for (category, members) in
+            (("NGCombustionTurbine", ["Alta", "Solitude"]), ("CoalOnly", ["Brighton"]))
+            expected = sum(
+                PA.get_data_vec(
+                    PA.compute(
+                        PA.Metrics.calc_active_power,
+                        fuelcat_results_uc,
+                        get_component(ThermalStandard, FUELCAT_SYS, name),
+                    ),
+                ) for name in members
+            )
+            # Absolute tolerance in MW: CairoMakie's stacked bands are read back
+            # by differencing cumulative envelopes, so a category's values carry
+            # rounding proportional to the whole stack, not to their own
+            # magnitude. A relative tolerance would therefore be unsatisfiable
+            # for the near-zero columns while 1e-8 MW stays far below any
+            # refiling, which moves whole units of generation.
+            @test isapprox(series_values(p, category), expected; atol = 1e-8)
+        end
     end
 end

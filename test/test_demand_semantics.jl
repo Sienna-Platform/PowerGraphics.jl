@@ -84,11 +84,18 @@ function old_api_demand(res; filter_func = nothing)
     return total
 end
 
-demand_trace(p) = collect(only([t for t in p.data if t.name == "Load"]).y)
+# Read through the backend-agnostic harness in `plot_introspection.jl` rather
+# than off `PlotlyLight.Plot.data`: a value assertion written against one
+# backend's object model is exactly what lets a regression survive in the other.
+demand_trace(p) = series_values(p, "Load")
 
 # The `PSY.System` path aggregates per load rather than into a single "Load"
 # column, so its window has to be read off the summed traces.
-total_trace(p) = sum(collect(t.y) for t in p.data)
+total_trace(p) = sum(series_ydata(p))
+
+# Float-noise slack on comparisons of MW totals: 1e-6 MW is 1 W, i.e. 1e-8 per
+# unit on the 100 MVA system base, far below anything the solver resolves.
+const DEMAND_MW_TOL = 1.0e-6
 
 @testset "demand on a mixed static + controllable load system" begin
     res = solve_interruptible_load_problem(
@@ -122,8 +129,8 @@ total_trace(p) = sum(collect(t.y) for t in p.data)
             make_selector(InterruptiblePowerLoad; groupby = :all),
         ),
     )
-    @test all(served .<= forecast .+ 1e-6)
-    @test any(served .< forecast .- 1e-6)
+    @test all(served .<= forecast .+ DEMAND_MW_TOL)
+    @test any(served .< forecast .- DEMAND_MW_TOL)
 
     # A whole-pool `calc_active_power` read cannot express this: the static
     # loads have no `ActivePowerVariable`, so the call throws and everything
@@ -163,9 +170,9 @@ end
     # served load every period, so the net-load line must sit exactly on top of
     # the generation stack. Curtailment is drawn above the line, not in it.
     generation = zeros(Float64, length(netload))
-    for t in p.data
-        t.name in ("Load", "Curtailment") && continue
-        generation .+= collect(t.y)
+    for s in plot_series(p)
+        s.label in ("Load", "Curtailment") && continue
+        generation .+= s.values
     end
     @test generation ≈ netload
 end
@@ -200,4 +207,40 @@ end
             horizon = 3,
         ),
     )
+end
+
+@testset "get_demand_data returns the numbers plot_demand draws" begin
+    res = solve_interruptible_load_problem(
+        build_interruptible_load_system(; n_interruptible = 2, capacity_scale = 0.55),
+    )
+
+    df = get_demand_data(res)
+    @test names(df)[1] == PA.DATETIME_COL
+    @test eltype(df[!, PA.DATETIME_COL]) <: Dates.DateTime
+
+    # The reason this accessor is exported at all: it must agree with the plot,
+    # not merely be plausible. Anything less and callers would be better off
+    # reading a metric directly, which is the trap the sign fix exists to close.
+    p = plot_demand(res; backend = PG.PlotlyLightBackend(), set_display = false)
+    @test df[!, "Load"] ≈ series_values(p, "Load")
+
+    # `aggregate` is meaningful only on the `PSY.System` path. Accepting and
+    # ignoring it here would hand back a single aggregated column while implying
+    # a per-bus breakdown, so the `IS.Results` method must not take it at all.
+    @test_throws MethodError get_demand_data(res; aggregate = "Bus")
+end
+
+@testset "get_demand_data window key words and their aliases slice" begin
+    sys = deepcopy(PSB.build_system(PSB.PSITestSystems, "c_sys5_uc"))
+    t0 = collect(get_forecast_initial_times(sys))[2]
+
+    full = get_demand_data(sys)
+    windowed = get_demand_data(sys; start_time = t0, len = 3)
+    @test DataFrames.nrow(windowed) == 3
+    @test DataFrames.nrow(full) > 3
+    @test windowed == get_demand_data(sys; initial_time = t0, horizon = 3)
+
+    # The `System` path groups columns, so `aggregate` has to reach the reader.
+    @test names(get_demand_data(sys; aggregate = "System")) !=
+          names(get_demand_data(sys; aggregate = "Bus"))
 end

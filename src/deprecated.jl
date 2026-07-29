@@ -51,7 +51,7 @@ and `time` fields to the [`plot_results`](@ref) pipeline; accepts the same key
 words as [`plot_results`](@ref).
 
 # Accepted Key Words
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """
 function plot_powerdata(
     powerdata::PA.PowerData;
@@ -82,7 +82,7 @@ handle by forwarding its `data` and `time` fields to the [`plot_results!`](@ref)
 pipeline; accepts the same key words as [`plot_results!`](@ref).
 
 # Accepted Key Words
-- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
+$(_BACKEND_KWARG)
 """
 function plot_powerdata!(
     p,
