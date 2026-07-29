@@ -1,11 +1,3 @@
-function _empty_plot()
-    return _empty_plot(CairoMakieBackend())
-end
-
-function _empty_plot_plotly()
-    return _empty_plot(PlotlyLightBackend())
-end
-
 function popkwargs(kwargs, kwarg)
     return Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ≠ kwarg)
 end
@@ -45,6 +37,23 @@ function _translate_demand_aggregate(kwargs)
     (haskey(out, :aggregate) && !isnothing(out[:aggregate])) || return out
     out[:aggregation] = _aggregate_to_type(out[:aggregate])
     delete!(out, :aggregate)
+    return out
+end
+
+# `plot_demand` documents `start_time`/`len` as aliases of `initial_time`/`horizon`.
+# The `IS.Results` path resolves both spellings in `_time_window_indices`, but
+# `PowerAnalytics.get_load_data(::PSY.System)` reads only the canonical pair, so the
+# aliases have to be normalized before forwarding or a `PSY.System` plot would
+# silently ignore the requested window instead of slicing it.
+const _DEMAND_WINDOW_ALIASES = ((:initial_time, :start_time), (:horizon, :len))
+
+function _translate_demand_window(kwargs)
+    out = Dict{Symbol, Any}(kwargs)
+    for (canonical, alias) in _DEMAND_WINDOW_ALIASES
+        if !haskey(out, canonical) && haskey(out, alias)
+            out[canonical] = out[alias]
+        end
+    end
     return out
 end
 
@@ -133,6 +142,121 @@ function _signed_stack_bounds(data::AbstractMatrix)
 end
 
 """
+Series indices in the order a non-bar plot must draw them: series whose values
+sum to a net-negative total first, then all the others, each group keeping its
+original column order. Net-negative series (storage charging, source input)
+stack *below* the zero axis, so drawing them first leaves the positive
+generation bands and lines on top of them instead of hidden behind their fill.
+The net-sign classification matches `_signed_stack_bounds`, which decides on
+which side of zero each series is stacked.
+"""
+function _series_draw_order(data::AbstractMatrix)
+    negative =
+        [sum(view(data, :, ix)) < zero(eltype(data)) for ix in 1:size(data, 2)]
+    return vcat(findall(negative), findall(.!negative))
+end
+
+# Old spelling of "this plot has no title". User code still passes it, so it is
+# normalized to `nothing` here — the one place that knows about the sentinel.
+const _NO_TITLE_SENTINEL = " "
+
+# Base name a plot is saved under when it carries no title.
+const _UNTITLED_SAVE_NAME = "dataframe"
+
+"""
+Drawing options shared by every plotting backend, resolved once by
+`_plot_dataframe!` so that the recipes in `ext/` consume already-decided
+values instead of each deriving its own defaults (which is how the two backends
+drifted apart in the first place). Every field is canonical: `nofill`,
+`linestyle`, and `linewidth` are always filled in, `title` is `nothing` when the
+plot has no title, and `save_file` is the complete path to write or `nothing`
+when the plot is not being saved.
+"""
+struct _PlotOptions{F}
+    bar::Bool
+    stack::Bool
+    stair::Bool
+    nofill::Bool
+    linestyle::Symbol
+    linewidth::Float64
+    power_scale::Float64
+    y_label::String
+    title::Union{String, Nothing}
+    save_file::Union{String, Nothing}
+    set_display::Bool
+    legend_position::Symbol
+    legend_font_size::Union{Float64, Nothing}
+    label_fn::F
+end
+
+# `linestyle::Symbol` is the canonical spelling. `line_dash::String` was the
+# PlotlyLight-only name for the same thing and is still accepted from old user
+# code; folding it in here means neither recipe has to know two names exist.
+function _resolve_linestyle(kwargs)
+    haskey(kwargs, :linestyle) && return Symbol(kwargs[:linestyle])
+    haskey(kwargs, :line_dash) && return Symbol(kwargs[:line_dash])
+    return :solid
+end
+
+function _resolve_title(kwargs)
+    title = get(kwargs, :title, nothing)
+    if isnothing(title) || title == _NO_TITLE_SENTINEL
+        return nothing
+    end
+    return String(title)
+end
+
+# The single place a save path is decided. Spaces in the title become
+# underscores, which is what the `plot_demand`/`plot_results`/`plot_fuel`
+# wrappers have always done; routing those wrappers through this helper rather
+# than letting each rebuild the path is what keeps one filename convention
+# across every entry point.
+function _resolve_save_file(backend::PlottingBackend, title, kwargs)
+    save_dir = get(kwargs, :save, nothing)
+    isnothing(save_dir) && return nothing
+    format = get(kwargs, :format, _default_save_format(backend))
+    name = replace(something(title, _UNTITLED_SAVE_NAME), " " => "_")
+    return joinpath(save_dir, "$(name).$(format)")
+end
+
+function _resolve_legend_font_size(kwargs)
+    font_size = get(kwargs, :legend_font_size, nothing)
+    if isnothing(font_size)
+        return nothing
+    end
+    return Float64(font_size)
+end
+
+# Key word values arrive with whatever type the caller wrote (`linewidth = 3`,
+# `power_scale = 1000`), so each one is converted to the field type here: the
+# parametric struct's default constructor matches on the exact type and would
+# otherwise reject them.
+function _PlotOptions(backend::PlottingBackend, kwargs)
+    bar = get(kwargs, :bar, false)
+    stack = get(kwargs, :stack, false)
+    title = _resolve_title(kwargs)
+    return _PlotOptions(
+        bar,
+        stack,
+        get(kwargs, :stair, false),
+        # An area fill is only meaningful under a stacked or bar plot, so a plain
+        # line plot draws no fill; `_plot_fuel!` forces `true` for its net-load
+        # overlay.
+        get(kwargs, :nofill, !bar && !stack),
+        _resolve_linestyle(kwargs),
+        Float64(get(kwargs, :linewidth, 1)),
+        Float64(get(kwargs, :power_scale, 1.0)),
+        String(get(kwargs, :y_label, "")),
+        title,
+        _resolve_save_file(backend, title, kwargs),
+        get(kwargs, :set_display, true),
+        Symbol(get(kwargs, :legend_position, :right)),
+        _resolve_legend_font_size(kwargs),
+        get(kwargs, :label_fn, label_short),
+    )
+end
+
+"""
 Row indices selecting the user-requested time window from a full results time
 axis; the legacy `initial_time`/`horizon` kwarg spellings stay accepted
 alongside `start_time`/`len`. Slicing locally instead of forwarding to
@@ -196,93 +320,167 @@ plot = plot_demand(res)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """  # ^ temporary workaround for https://github.com/Sienna-Platform/PowerSystems.jl/issues/1598
-function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
-    return plot_demand!(_empty_plot(), result; kwargs...)
-end
-
-@doc (@doc plot_demand) function plot_demand_plotly(
+function plot_demand(
     result::Union{IS.Results, PSY.System};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return plot_demand_plotly!(_empty_plot_plotly(), result; kwargs...)
+    return plot_demand!(_empty_plot(backend), result; backend = backend, kwargs...)
 end
 
 # Assemble the aggregated demand DataFrame (columns = demand categories, no
 # DateTime column) and its time axis. Dispatching on the input type keeps the
 # metrics-API and System paths separate.
 
+# The single demand column the `IS.Results` path always produces; the fixed name
+# keeps palette and label behavior identical to the old API.
+const _DEMAND_COLUMN = "Load"
+
+# Demand is read variable-first, exactly as the old `PA.get_load_data` did (it
+# scanned `SUPPORTED_LOAD_VARIABLES = [ActivePowerVariable]` and only called
+# `add_fixed_parameters!` for load types with no variable stored). The order is
+# not cosmetic: under a controllable formulation (`PowerLoadInterruption`,
+# `PowerLoadDispatch`) the variable is the *served* load, while the forecast
+# parameter is the demand that was requested, and PowerSimulations stores that
+# parameter with the opposite sign there — `get_multiplier_value` is
+# `+max_active_power` for `AbstractControllablePowerLoadFormulation` against
+# `-max_active_power` for `StaticPowerLoad`. Reading only `calc_load_forecast`
+# therefore plots the wrong quantity *and* the wrong sign for dispatchable load,
+# and in a mixed system the two sign conventions cancel against each other.
+const _DEMAND_METRICS = (PA.Metrics.calc_active_power, PA.Metrics.calc_load_forecast)
+
+# The pool of loads to plot: a user-supplied filter folds into the selector, and
+# the default matches the built-in `all_loads` selector.
+_demand_selector(::Nothing) = PSY.rebuild_selector(PA.Selectors.all_loads; groupby = :all)
+_demand_selector(filter_func::Function) =
+    PSY.make_selector(filter_func, PSY.ElectricLoad; groupby = :all)
+
+# The same pool narrowed to one concrete load type. The variable/parameter
+# fallback has to be resolved per type rather than over the whole load pool at
+# once, because `PowerAnalytics.compute` throws as soon as *any* component in a
+# selector is missing the result: on a mixed static/dispatchable system a
+# whole-pool `calc_active_power` call fails on the static loads, every load then
+# falls back to the forecast, and the opposing sign conventions silently cancel.
+# Per type is also what the old pipeline did — `add_fixed_parameters!` keyed its
+# variable-vs-parameter choice on the component type — and it costs one or two
+# reads per load type rather than one per load.
+_demand_type_selector(::Nothing, load_type::Type{<:PSY.ElectricLoad}) =
+    PSY.make_selector(load_type; groupby = :all)
+_demand_type_selector(filter_func::Function, load_type::Type{<:PSY.ElectricLoad}) =
+    PSY.make_selector(filter_func, load_type; groupby = :all)
+
+# Concrete load types present in the pool, ordered deterministically so that the
+# summation order (and the floating-point rounding it implies) is reproducible.
+function _demand_component_types(components)
+    return sort!(unique(typeof(c) for c in components); by = nameof)
+end
+
+# Compute one metric over one selector, returning `(time, values)` as fresh
+# vectors, or `nothing` when that result is not stored for the selected
+# components (the old pipeline skipped those keys silently).
+function _try_selector_metric(metric, result::IS.Results, selector)
+    df = try
+        PA.compute(metric, result, selector)
+    catch e
+        _is_missing_result_error(e) && return nothing
+        rethrow()
+    end
+    return (
+        Vector{Dates.DateTime}(PA.get_time_vec(df)),
+        Vector{Float64}(PA.get_data_vec(df)),
+    )
+end
+
 # Results path: the PowerAnalytics metrics API.
 function _demand_data(result::IS.Results; kwargs...)
-    # A user-supplied filter folds into the selector; the default matches the
-    # built-in `all_loads` selector grouped into a single column.
     filter_func = get(kwargs, :filter_func, nothing)
-    selector = if isnothing(filter_func)
-        PSY.rebuild_selector(PA.Selectors.all_loads; groupby = :all)
-    else
-        PSY.make_selector(filter_func, PSY.ElectricLoad; groupby = :all)
+    time = Dates.DateTime[]
+    total = Float64[]
+    for load_type in
+        _demand_component_types(PSY.get_components(_demand_selector(filter_func), result))
+        selector = _demand_type_selector(filter_func, load_type)
+        for metric in _DEMAND_METRICS
+            r = _try_selector_metric(metric, result, selector)
+            isnothing(r) && continue
+            metric_time, vals = r
+            if isempty(time)
+                time = metric_time
+                total = zeros(Float64, length(metric_time))
+            elseif time != metric_time
+                throw(
+                    ArgumentError(
+                        "Mismatched time axes across load results for \"$load_type\"",
+                    ),
+                )
+            end
+            total .+= vals
+            break
+        end
     end
     # A load type attached to the system but absent from the problem template
     # must not crash the plot: skip missing results like everywhere else and
     # fall through to the empty-data ("No load data found") path.
-    ldf = try
-        PA.compute(PA.Metrics.calc_load_forecast, result, selector)
-    catch e
-        _is_missing_result_error(e) || rethrow()
-        return (DataFrames.DataFrame(), Dates.DateTime[])
-    end
-    time = PA.get_time_vec(ldf)
-    load = PA.get_data_vec(ldf)
+    isempty(time) && return (DataFrames.DataFrame(), Dates.DateTime[])
 
     window = _time_window_indices(time, kwargs)
-    # Range indexing allocates fresh vectors, so the metric's DataFrame can
-    # never be mutated downstream (e.g. via `extra_load`); the fixed "Load"
-    # column name keeps palette and label behavior identical to the old API.
-    return (DataFrames.DataFrame("Load" => load[window]), time[window])
+    # Range indexing allocates fresh vectors, so nothing the metrics returned can
+    # be mutated downstream (e.g. via `extra_load`).
+    return (DataFrames.DataFrame(_DEMAND_COLUMN => total[window]), time[window])
 end
 
 # System path: the new API cannot read demand straight from a `PSY.System`, so
 # this stays on the old PowerAnalytics interface, including the
-# `aggregate::String` → `aggregation::Type` translation.
+# `aggregate::String` → `aggregation::Type` translation and the
+# `start_time`/`len` alias normalization.
 function _demand_data(system::PSY.System; kwargs...)
-    kwargs = _translate_demand_aggregate(kwargs)
+    kwargs = _translate_demand_aggregate(_translate_demand_window(kwargs))
     load = PA.get_load_data(system; kwargs...)
     return (PA.combine_categories(load.data), load.time)
 end
 
 function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
 
     title = get(kwargs, :title, "Demand")
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
+    save_file = _resolve_save_file(backend, title, kwargs)
 
     load_agg, load_time = _demand_data(result; kwargs...)
     if isempty(load_agg)
         throw(ArgumentError("No load data found"))
     end
-    # Build a mutable copy with defaults so we splat exactly once below.
-    kwargs = popkwargs(kwargs, :filter_func)
+    # Build a mutable copy with defaults so we splat exactly once below. `:save`,
+    # `:title`, and `:set_display` are dropped here, as they are in
+    # `_plot_results!` and `_plot_fuel!`, because this wrapper passes its own
+    # values for them explicitly and does the saving and displaying itself. A
+    # splatted key word wins over an explicit one, so leaving them in made the
+    # delegate save and display a second time.
+    kwargs = Dict{Symbol, Any}(
+        (k, v) for
+        (k, v) in kwargs if k ∉ [:filter_func, :save, :title, :set_display]
+    )
     # Optional per-timestep load added to demand (e.g. storage charging or source
     # input, so the net-load line matches the top of the generation stack in `plot_fuel!`).
     extra_load = get(kwargs, :extra_load, nothing)
     kwargs = popkwargs(kwargs, :extra_load)
-    linestyle = get(kwargs, :linestyle, :solid)
-    kwargs[:linestyle] = Symbol(linestyle)
-    kwargs[:line_dash] = string(linestyle)
+    # `linestyle` is the canonical spelling for both backends (`_PlotOptions`
+    # also folds in a caller-supplied `line_dash`), so it is set once here.
+    kwargs[:linestyle] = _resolve_linestyle(kwargs)
     kwargs[:linewidth] = get(kwargs, :linewidth, 1)
     kwargs[:seriescolor] =
         get(kwargs, :seriescolor, get_palette_seriescolor(backend, palette))
@@ -311,10 +509,8 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     )
 
     set_display && _display_plot(backend, p)
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    if !isnothing(save_file)
+        save_plot(p, save_file, backend; kwargs...)
     end
     return p
 end
@@ -322,12 +518,9 @@ end
 """
     plot_demand!(plot, result)
     plot_demand!(plot, system)
-    plot_demand_plotly!(plot, result)
-    plot_demand_plotly!(plot, system)
 
 Plots the demand in the system onto an existing plot handle. The `!`-form mutates
-or extends `plot`; the `_plotly` variants render with the PlotlyLight backend
-instead of CairoMakie.
+or extends `plot`; pass the `backend` key word to pick the renderer.
 
 # Arguments
 
@@ -348,29 +541,27 @@ instead of CairoMakie.
     always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
-    return _plot_demand!(p, result, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_demand!) function plot_demand_plotly!(
+function plot_demand!(
     p,
     result::Union{IS.Results, PSY.System};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return _plot_demand!(p, result, PlotlyLightBackend(); kwargs...)
+    return _plot_demand!(p, result, backend; kwargs...)
 end
 
 ################################# Plotting a Single DataFrame ##########################
@@ -401,45 +592,45 @@ plot = plot_dataframe(df, time_range)
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_dataframe(df::DataFrames.DataFrame; kwargs...)
-    return plot_dataframe!(_empty_plot(), PA.no_datetime(df), df.DateTime; kwargs...)
-end
 function plot_dataframe(
-    df::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
-    kwargs...,
-)
-    return plot_dataframe!(_empty_plot(), df, time_range; kwargs...)
-end
-
-@doc (@doc plot_dataframe) function plot_dataframe_plotly(
     df::DataFrames.DataFrame;
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return plot_dataframe_plotly!(
-        _empty_plot_plotly(),
+    return plot_dataframe!(
+        _empty_plot(backend),
         PA.no_datetime(df),
         df.DateTime;
+        backend = backend,
         kwargs...,
     )
 end
-function plot_dataframe_plotly(
+
+function plot_dataframe(
     df::DataFrames.DataFrame,
     time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return plot_dataframe_plotly!(_empty_plot_plotly(), df, time_range; kwargs...)
+    return plot_dataframe!(
+        _empty_plot(backend),
+        df,
+        time_range;
+        backend = backend,
+        kwargs...,
+    )
 end
 
 function _plot_dataframe!(
@@ -449,20 +640,34 @@ function _plot_dataframe!(
     backend;
     kwargs...,
 )
+    # A caller may hand in `nothing` to ask for a fresh plot; resolving it here
+    # means the recipes can take a concrete plot type.
+    isnothing(p) && (p = _empty_plot(backend))
+    # Nothing downstream — labels, legend, saving — is meaningful without data,
+    # so the empty case ends here rather than in each recipe.
+    if isempty(variable)
+        @warn "Plot dataframe empty: skipping plot creation"
+        return p
+    end
     tr =
         typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    return _dataframe_plots_internal(p, variable, tr, backend; kwargs...)
+    return _dataframe_plots_internal(
+        p,
+        variable,
+        tr,
+        backend,
+        _PlotOptions(backend, kwargs);
+        kwargs...,
+    )
 end
 
 """
     plot_dataframe!(plot, df)
     plot_dataframe!(plot, df, time_range)
-    plot_dataframe_plotly!(plot, df)
-    plot_dataframe_plotly!(plot, df, time_range)
 
 Plots data from a [`DataFrames.DataFrame`](@extref) where each row represents a time
-period and each column represents a trace, onto an existing plot handle. The
-`_plotly` variants render with the PlotlyLight backend instead of CairoMakie.
+period and each column represents a trace, onto an existing plot handle. Pass the
+`backend` key word to pick the renderer.
 
 # Arguments
 
@@ -475,57 +680,35 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_dataframe!(p, df::DataFrames.DataFrame; kwargs...)
-    return _plot_dataframe!(
-        p,
-        PA.no_datetime(df),
-        df.DateTime,
-        CairoMakieBackend();
-        kwargs...,
-    )
+function plot_dataframe!(
+    p,
+    df::DataFrames.DataFrame;
+    backend::PlottingBackend = CairoMakieBackend(),
+    kwargs...,
+)
+    return _plot_dataframe!(p, PA.no_datetime(df), df.DateTime, backend; kwargs...)
 end
 
 function plot_dataframe!(
     p,
     variable::DataFrames.DataFrame,
     time_range::Union{DataFrames.DataFrame, Array, StepRange};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return _plot_dataframe!(p, variable, time_range, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_dataframe!) function plot_dataframe_plotly!(
-    p,
-    df::DataFrames.DataFrame;
-    kwargs...,
-)
-    return _plot_dataframe!(
-        p,
-        PA.no_datetime(df),
-        df.DateTime,
-        PlotlyLightBackend();
-        kwargs...,
-    )
-end
-
-function plot_dataframe_plotly!(
-    p,
-    variable::DataFrames.DataFrame,
-    time_range::Union{DataFrames.DataFrame, Array, StepRange};
-    kwargs...,
-)
-    return _plot_dataframe!(p, variable, time_range, PlotlyLightBackend(); kwargs...)
+    return _plot_dataframe!(p, variable, time_range, backend; kwargs...)
 end
 
 ################################# Plotting a Results Dictionary ##########################
@@ -591,7 +774,7 @@ function _plot_results!(
 )
     title = get(kwargs, :title, "")
     set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
+    save_file = _resolve_save_file(backend, title, kwargs)
 
     df = if get(kwargs, :combine_categories, true)
         _combine_result_categories(
@@ -610,10 +793,8 @@ function _plot_results!(
     p = _plot_dataframe!(p, df, time, backend; set_display = false, kwargs...)
 
     set_display && _display_plot(backend, p)
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    if !isnothing(save_file)
+        save_plot(p, save_file, backend; kwargs...)
     end
     return p
 end
@@ -634,26 +815,24 @@ stripped and the time axis is taken from the first entry.
 - `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    return plot_results!(_empty_plot(), results; kwargs...)
-end
-
-@doc (@doc plot_results) function plot_results_plotly(
+function plot_results(
     results::Dict{String, DataFrames.DataFrame};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
-    return plot_results_plotly!(_empty_plot_plotly(), results; kwargs...)
+    return plot_results!(_empty_plot(backend), results; backend = backend, kwargs...)
 end
 
 """
@@ -673,29 +852,26 @@ Makes a plot from a results dictionary onto an existing plot handle. Each entry'
 - `aggregate::Function`: reduction applied to each entry's `time × column` matrix when `combine_categories = true` (default `x -> sum(x; dims = 2)`). The function must return an array with one value per time period (length `nrow`); scalar returns are unsupported.
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    data, time = _split_results_time(results)
-    return _plot_results!(p, data, time, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_results!) function plot_results_plotly!(
+function plot_results!(
     p,
     results::Dict{String, DataFrames.DataFrame};
+    backend::PlottingBackend = CairoMakieBackend(),
     kwargs...,
 )
     data, time = _split_results_time(results)
-    return _plot_results!(p, data, time, PlotlyLightBackend(); kwargs...)
+    return _plot_results!(p, data, time, backend; kwargs...)
 end
 
 ################################# Plotting Fuel Plot of Results ##########################
@@ -729,32 +905,35 @@ plot = plot_fuel(res)
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_fuel(result::IS.Results; kwargs...)
-    return plot_fuel!(_empty_plot(), result; kwargs...)
+function plot_fuel(
+    result::IS.Results;
+    backend::PlottingBackend = CairoMakieBackend(),
+    kwargs...,
+)
+    return plot_fuel!(_empty_plot(backend), result; backend = backend, kwargs...)
 end
 
-@doc (@doc plot_fuel) function plot_fuel_plotly(result::IS.Results; kwargs...)
-    return plot_fuel_plotly!(_empty_plot_plotly(), result; kwargs...)
+# Entry point for the Weave report template so the template stays
+# backend-agnostic. The `(backend, result)` argument order is part of the
+# template's contract — see `report_templates/generic_report_template.jmd`,
+# which users may have copied — so it is kept even though `backend` is now a key
+# word everywhere else.
+function _report_plot_fuel(backend::PlottingBackend, result; kwargs...)
+    return plot_fuel(result; backend = backend, kwargs...)
 end
-
-# Backend-dispatched entry point for the Weave report template so the template
-# stays backend-agnostic instead of branching on the backend type.
-_report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
-    plot_fuel(result; kwargs...)
-_report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
-    plot_fuel_plotly(result; kwargs...)
 
 # The fuel stack is assembled on the PowerAnalytics metrics/selectors API, one
 # metric evaluation per component, because the old pipeline's semantics cannot
@@ -986,6 +1165,21 @@ function _fuel_categories(file::AbstractString)
     return PA.parse_injector_categories(file)
 end
 
+# The generator mapping file behind the category selectors. When the caller
+# supplies none, `_fuel_categories` hands back `PA.Selectors.injector_categories`,
+# which PowerAnalytics builds as
+# `parse_injector_categories(PA.FUEL_TYPES_DATA_FILE)`
+# (PowerAnalytics/src/builtin_component_selectors.jl), so that same file
+# reproduces the default categories rule for rule.
+_fuel_mapping_file(::Nothing) = PA.FUEL_TYPES_DATA_FILE
+_fuel_mapping_file(file::AbstractString) = file
+
+# `parse_injector_categories` and `PA.Selectors.injector_categories` both take
+# PowerAnalytics' default root type, so re-deriving rule specificity has to use
+# the same one or `parse_fuel_category`'s `typeintersect` lands elsewhere than it
+# did when the sub-selectors were built.
+const _MAPPING_ROOT_TYPE = PSY.StaticInjection
+
 _pool_components(::Type{T}, result::IS.Results, filter_func::Function) where {T} =
     PSY.get_components(filter_func, T, result)
 _pool_components(::Type{T}, result::IS.Results, ::Nothing) where {T} =
@@ -1003,45 +1197,125 @@ function _injector_pool(result::IS.Results, filter_func, storage::Bool, sources:
     return pool
 end
 
-# Number of `supertype` steps from `T` to the type named `name`;
-# `typemax(Int)` when the name never appears in the chain. Matching by name
-# reproduces the old mapping lookup, which compared the mapping's `gentype`
-# strings against type names; comparing `Symbol`s avoids allocating a `String`
-# per supertype step.
-function _type_distance(::Type{T}, name::Symbol) where {T}
-    t = T
+# Number of `supertype` steps from `t` up to `target`, `typemax(Int)` when `t`
+# is not a subtype of it at all. The old mapping lookup compared the mapping's
+# `gentype` strings against type names; matching the resolved type objects
+# instead keeps bare names working (PowerAnalytics' `lookup_gentype` resolves
+# them against `PowerSystems`) while telling `Foo.Thermal` apart from
+# `Bar.Thermal`, which name matching cannot. `@nospecialize` keeps this to a
+# single compiled method instead of one per (component type, rule type) pair.
+function _type_distance(@nospecialize(t::Type), @nospecialize(target::Type))
+    t <: target || return typemax(Int)
     dist = 0
     while true
-        nameof(t) === name && return dist
-        t === Any && return typemax(Int)
+        t === target && return dist
+        # `target` is a subtype of `t` without appearing in its nominal chain
+        # (e.g. a `Union` produced by `typeintersect`): still a match, but rank
+        # it behind every rule whose type the chain does reach.
+        t === Any && return typemax(Int) - 1
         t = supertype(t)
         dist += 1
     end
 end
 
-# One rule of the generator mapping: a category, the rule's specificity
-# (parsed from the selector name PowerAnalytics assigns, either "Type" or
-# "Type__PrimeMover__Fuel" with "Any" wildcards), and its member components.
+# One rule of the generator mapping: a category, the rule's specificity taken
+# from the `(gentype, primemover, fuel)` triple PowerAnalytics itself parsed out
+# of the mapping YAML, and its member components.
 struct _FuelRule
     category::String
-    type_name::Symbol
+    gen_type::Type
     pm_wild::Bool
     fuel_wild::Bool
     members::Set{PSY.Component}
 end
 
-function _FuelRule(category::String, rule_selector, members::Set{PSY.Component})
-    parts = split(PA.get_name(rule_selector), PSY.COMPONENT_NAME_DELIMITER)
-    pm_wild = length(parts) < 2 || parts[2] == "Any"
-    fuel_wild = length(parts) < 3 || parts[3] == "Any"
-    return _FuelRule(category, Symbol(first(parts)), pm_wild, fuel_wild, members)
+# The component type a category sub-selector filters on. PowerAnalytics builds
+# every one of them via `make_selector(filter_closure, gen_type)`, i.e. as a
+# `FilterComponentSelector` (PowerAnalytics/src/builtin_component_selectors.jl,
+# `make_fuel_component_selector`). Anything else means the parser changed shape,
+# and `Union{}` — which no surviving mapping rule can yield — makes the caller's
+# correspondence check fail loudly.
+_selector_component_type(selector::IS.FilterComponentSelector) = selector.component_type
+_selector_component_type(::IS.ComponentSelector) = Union{}
+
+# The `(gentype, primemover, fuel)` specificity of every rule listed under
+# `category`, in the order PowerAnalytics turns them into sub-selectors.
+# `parse_fuel_category` is PowerAnalytics' own parser, so the type and enum items
+# here are exactly the ones baked into the corresponding sub-selector's filter,
+# and rules that `make_fuel_component_selector` drops (their `gentype`
+# intersected away to `Union{}` under the root type) are dropped here too.
+function _mapping_rule_specs(raw_mapping::AbstractDict, category::AbstractString)
+    specs = Vector{Tuple{Type, Bool, Bool}}()
+    for rule in get(raw_mapping, category, ())
+        gen_type, prime_mover, fuel =
+            PA.parse_fuel_category(rule; root_type = _MAPPING_ROOT_TYPE)
+        gen_type <: Union{} && continue
+        push!(specs, (gen_type, isnothing(prime_mover), isnothing(fuel)))
+    end
+    return specs
+end
+
+# `parse_generator_mapping_file` broadcasts `make_fuel_component_selector` over a
+# category's rule list, drops the `nothing`s, and wraps the survivors in a
+# `ListComponentSelector`, whose `get_groups` returns its contents verbatim — so
+# group `i` comes from surviving rule `i`. PowerAnalytics never promised that
+# ordering, so cross-check it against the one thing each group independently
+# carries: the component type its filter is built on. A mismatch means the
+# specificity above cannot be trusted, and quietly ranking on it would sort
+# components into the wrong fuel category with no other symptom.
+function _validate_rule_correspondence(
+    category::AbstractString,
+    mapping_file::AbstractString,
+    groups,
+    specs::Vector{Tuple{Type, Bool, Bool}},
+)
+    if length(groups) == length(specs) &&
+       all(_selector_component_type(g) === first(s) for (g, s) in zip(groups, specs))
+        return nothing
+    end
+    throw(
+        ErrorException(
+            "Cannot recover generator-mapping rule specificity for category " *
+            "\"$category\" of $mapping_file: PowerAnalytics $(pkgversion(PA)) " *
+            "produced sub-selectors $([PA.get_name(g) for g in groups]) on types " *
+            "$([_selector_component_type(g) for g in groups]), which do not " *
+            "correspond one-to-one and in order with the parsed rule types " *
+            "$([first(s) for s in specs]). PowerGraphics relies on " *
+            "`parse_generator_mapping_file` emitting one sub-selector per " *
+            "mapping rule, in order, to rank rules by specificity; please " *
+            "report this as a PowerGraphics issue.",
+        ),
+    )
+end
+
+# Every mapping rule that has at least one member in `result`, paired with the
+# specificity of the YAML rule that produced it.
+function _fuel_rules(
+    result::IS.Results,
+    categories,
+    mapping_file::AbstractString,
+    filter_func,
+)
+    raw_mapping = YAML.load_file(mapping_file)
+    rules = _FuelRule[]
+    for (category, selector) in categories
+        groups = collect(PSY.get_groups(selector, result))
+        specs = _mapping_rule_specs(raw_mapping, category)
+        _validate_rule_correspondence(category, mapping_file, groups, specs)
+        for (group, (gen_type, pm_wild, fuel_wild)) in zip(groups, specs)
+            members = Set{PSY.Component}(PSY.get_components(filter_func, group, result))
+            isempty(members) && continue
+            push!(rules, _FuelRule(category, gen_type, pm_wild, fuel_wild, members))
+        end
+    end
+    return rules
 end
 
 # Rank a rule for `comp` the way the old first-match-wins ladder did: most
 # specific component type first, then prime-mover-specific over wildcard, then
 # fuel-specific over wildcard. Smaller ranks win.
 function _rule_rank(comp::PSY.Component, rule::_FuelRule)
-    return (_type_distance(typeof(comp), rule.type_name), rule.pm_wild, rule.fuel_wild)
+    return (_type_distance(typeof(comp), rule.gen_type), rule.pm_wild, rule.fuel_wild)
 end
 
 """
@@ -1053,16 +1327,14 @@ per-rule subselectors keeps each component in a single category and prevents
 its energy from being double-counted. Components matching no rule are returned
 separately for the "$(_UNMAPPED_CATEGORY)" bucket.
 """
-function _assign_fuel_categories(result::IS.Results, categories, pool, filter_func)
-    rules = _FuelRule[]
-    for (category, selector) in categories
-        for rule_selector in PSY.get_groups(selector, result)
-            members =
-                Set{PSY.Component}(PSY.get_components(filter_func, rule_selector, result))
-            isempty(members) && continue
-            push!(rules, _FuelRule(category, rule_selector, members))
-        end
-    end
+function _assign_fuel_categories(
+    result::IS.Results,
+    categories,
+    mapping_file::AbstractString,
+    pool,
+    filter_func,
+)
+    rules = _fuel_rules(result, categories, mapping_file, filter_func)
     assignments = Dict{String, Vector{PSY.Component}}()
     unmatched = PSY.Component[]
     for comp in pool
@@ -1113,10 +1385,13 @@ function _fuel_data(result::IS.Results, palette_categories::Vector{String}; kwar
     slacks = get(kwargs, :slacks, true)
     storage = get(kwargs, :storage, true)
     sources = get(kwargs, :sources, true)
-    categories = _fuel_categories(get(kwargs, :generator_mapping_file, nothing))
+    mapping_arg = get(kwargs, :generator_mapping_file, nothing)
+    categories = _fuel_categories(mapping_arg)
+    mapping_file = _fuel_mapping_file(mapping_arg)
 
     pool = _injector_pool(result, filter_func, storage, sources)
-    assignments, unmatched = _assign_fuel_categories(result, categories, pool, filter_func)
+    assignments, unmatched =
+        _assign_fuel_categories(result, categories, mapping_file, pool, filter_func)
 
     acc = _FuelAccumulator()
     for (category, comps) in assignments, comp in comps
@@ -1152,11 +1427,11 @@ end
 
 function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
-    save_fig = get(kwargs, :save, nothing)
     load = get(kwargs, :load, true)
     title = get(kwargs, :title, "Fuel")
     stack = get(kwargs, :stack, true)
     palette = get(kwargs, :palette, PALETTE)
+    save_file = _resolve_save_file(backend, title, kwargs)
     kwargs =
         Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
 
@@ -1223,21 +1498,18 @@ function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
     # TODO: how to display this?
 
     set_display && _display_plot(backend, p)
-    if !isnothing(save_fig)
-        title = replace(title, " " => "_")
-        format = get(kwargs, :format, "png")
-        save_plot(p, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    if !isnothing(save_file)
+        save_plot(p, save_file, backend; kwargs...)
     end
     return p
 end
 
 """
     plot_fuel!(plot, results)
-    plot_fuel_plotly!(plot, results)
 
 Plots a stack plot of the results by fuel type onto an existing plot handle and
-assigns each fuel type a specific color. The `_plotly` variant renders with the
-PlotlyLight backend instead of CairoMakie.
+assigns each fuel type a specific color. Pass the `backend` key word to pick the
+renderer.
 
 # Arguments
 
@@ -1257,25 +1529,27 @@ PlotlyLight backend instead of CairoMakie.
 - `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
+- `format::String`: file extension for saved plots; defaults to `"png"` for the CairoMakie backend and `"html"` for the PlotlyLight backend. CairoMakie supports `"png"`, `"pdf"`, `"svg"`; PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
 - `seriescolor::Array`: Set different colors for the plots
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
+- `nofill::Bool = !bar && !stack`: draw traces without an area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_results`; `plot_fuel` always aggregates), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
+- `backend::PlottingBackend = CairoMakieBackend()`: plotting backend, `CairoMakieBackend()` (static png/pdf/svg) or `PlotlyLightBackend()` (interactive html). The matching backend package must be loaded with `using`.
 """
-function plot_fuel!(p, result::IS.Results; kwargs...)
-    return _plot_fuel!(p, result, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_fuel!) function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
-    return _plot_fuel!(p, result, PlotlyLightBackend(); kwargs...)
+function plot_fuel!(
+    p,
+    result::IS.Results;
+    backend::PlottingBackend = CairoMakieBackend(),
+    kwargs...,
+)
+    return _plot_fuel!(p, result, backend; kwargs...)
 end
 
 """
@@ -1296,7 +1570,7 @@ PlotlyLight plots dispatch to the PlotlyLight writer (html).
 res = solve_op_problem!(OpProblem)
 plot = plot_fuel(res)
 save_plot(plot, "my_plot.png")               # CairoMakie
-plot = plot_fuel_plotly(res)
+plot = plot_fuel(res; backend = PlotlyLightBackend())
 save_plot(plot, "my_plot.html")               # PlotlyLight
 ```
 

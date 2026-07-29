@@ -53,6 +53,8 @@ end
 
 const PALETTE = load_palette()
 
+# Unused inside PowerGraphics since both backends default to the full palette;
+# kept because it is not underscore-prefixed and downstream code may call it.
 function get_default_palette(palette)
     default_palette = PaletteColor[]
     default_order = [6, 52, 14, 1, 32, 7, 18, 20, 27, 53, 17] # the default order from the color palette #
@@ -81,10 +83,7 @@ function get_palette_cairomakie(palette)
 end
 
 function get_palette_plotly(palette)
-    getfield.(get_default_palette(palette), :RGB)
-end
-
-function get_palette_plotly_fuel(palette)
+    # PlotlyLight expects colors as RGB strings.
     getfield.(palette, :RGB)
 end
 
@@ -92,6 +91,11 @@ function get_palette_category(palette)
     getfield.(palette, :category)
 end
 
+# Default series colors for a backend. Both backends select the *same* colors —
+# the whole palette, so more series get a distinct color before the cycle
+# repeats — and differ only in the representation each plotting library wants.
+# Keeping the selection here (rather than in the two recipes) is what stops the
+# same data from picking up different colors depending on the backend.
 function get_palette_seriescolor(backend::CairoMakieBackend, palette)
     return get_palette_cairomakie(palette)
 end
@@ -122,24 +126,14 @@ function _match_fuel_colors(names, palette, color_range, fallback_colors)
     return default
 end
 
+# One method for every backend: the palette selection is identical and the
+# per-library color representation is already handled by the dispatched
+# `get_palette_seriescolor`, so there is nothing left for a backend to override.
 function match_fuel_colors(
     data::DataFrames.DataFrame,
-    backend::CairoMakieBackend;
+    backend::PlottingBackend;
     palette = PALETTE,
 )
-    colors = get_palette_cairomakie(palette)
+    colors = get_palette_seriescolor(backend, palette)
     return _match_fuel_colors(DataFrames.names(data), palette, colors, colors)
-end
-
-function match_fuel_colors(
-    data::DataFrames.DataFrame,
-    backend::PlotlyLightBackend;
-    palette = PALETTE,
-)
-    return _match_fuel_colors(
-        DataFrames.names(data),
-        palette,
-        get_palette_plotly_fuel(palette),
-        get_palette_plotly(palette),
-    )
 end

@@ -24,7 +24,7 @@ pages = OrderedDict(
     ## TODO add additional pages here in the future and remove stubs
     "Tutorials" => Any["Examples"=>"tutorials/examples.md"], # TODO: make examples page
     "How to..." => Any["Change Backends"=>"how_to_guides/backends.md"],
-    # "Explanation" => Any["stub" => "explanation/stub.md"],
+    "Explanation" => Any["Backend Parity Contract"=>"explanation/backend_parity.md"],
     "Reference" => Any[
         "Public API"=>"reference/public.md",
         "Developers"=>[
