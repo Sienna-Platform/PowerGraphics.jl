@@ -4,7 +4,7 @@ using PowerGraphics
 using Weave
 
 """
-    report(res::IS.Results, out_path::String, design_template::String)
+    report(res::IS.Outputs, out_path::String, design_template::String)
 
 This function uses [`Weave.jl`](https://weavejl.mpastell.com/stable/) to either generate a LaTeX or HTML
 file based on the `report_design.jmd` (Julia markdown) file
@@ -14,7 +14,7 @@ An example template is available
 [here](https://github.com/Sienna-Platform/PowerGraphics.jl/blob/main/report_templates/generic_report_template.jmd)
 
 # Arguments
-- `results::IS.Results`: The results to be plotted
+- `results::IS.Outputs`: The results to be plotted
 - `out_path::String`: folder path to the location the report should be generated
 - `design_template::String = "file_path"`: directs the function to the julia markdown report design, the default
 
@@ -30,7 +30,7 @@ report(results, out_path, template)
 - `backend::PlottingBackend = CairoMakieBackend()`: sets the plotting backend (CairoMakieBackend or PlotlyLightBackend)
 """
 function PowerGraphics.report(
-    res::PowerGraphics.IS.Results,
+    res::PowerGraphics.IS.Outputs,
     out_path::String,
     design_template::String;
     kwargs...,

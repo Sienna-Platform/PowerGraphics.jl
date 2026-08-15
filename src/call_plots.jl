@@ -18,7 +18,7 @@ _display_plot(::PlotlyLightBackend, p) = display(p)
 # Translation table for the user-facing `aggregate::String` kwarg of
 # `plot_demand` to the typed `aggregation::Type` kwarg expected by
 # `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
-# `IS.Results` branch of `get_load_data` ignores `aggregation` entirely, so
+# `IS.Outputs` branch of `get_load_data` ignores `aggregation` entirely, so
 # the translation is a safe no-op there.
 const _AGGREGATE_STRING_TO_TYPE =
     Dict("System" => PSY.System, "Bus" => PSY.ACBus, "PowerLoad" => PSY.PowerLoad)
@@ -141,7 +141,7 @@ Plots the demand in the system.
 
 # Arguments
 
-- `res::Union{`[`InfrastructureSystems.Results`](@extref)`, `[`PowerSystems.System`](@extref)`}`: 
+- `res::Union{`[`InfrastructureSystems.Outputs`](@extref)`, `[`PowerSystems.System`](@extref)`}`: 
     A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
     or [`PowerSystems.System`](@extref) to plot the demand from
 
@@ -173,18 +173,18 @@ plot = plot_demand(res)
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """  # ^ temporary workaround for https://github.com/Sienna-Platform/PowerSystems.jl/issues/1598
-function plot_demand(result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand(result::Union{IS.Outputs, PSY.System}; kwargs...)
     return plot_demand!(_empty_plot(), result; kwargs...)
 end
 
 @doc (@doc plot_demand) function plot_demand_plotly(
-    result::Union{IS.Results, PSY.System};
+    result::Union{IS.Outputs, PSY.System};
     kwargs...,
 )
     return plot_demand_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
-function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs...)
+function _plot_demand!(p, result::Union{IS.Outputs, PSY.System}, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     bar = get(kwargs, :bar, false)
@@ -261,7 +261,7 @@ instead of CairoMakie.
 # Arguments
 
 - `plot`: existing plot handle returned by a previous PowerGraphics plot call such as [`plot_demand`](@ref PowerGraphics.plot_demand)
-- `res::Union{`[`InfrastructureSystems.Results`](@extref)`, `[`PowerSystems.System`](@extref)`}`:
+- `res::Union{`[`InfrastructureSystems.Outputs`](@extref)`, `[`PowerSystems.System`](@extref)`}`:
     A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
     or [`PowerSystems.System`](@extref) to plot the demand from
 
@@ -272,7 +272,7 @@ instead of CairoMakie.
 - `horizon::Int64`: To plot a shorter window of time than the full results
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand by
-    [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.Bus`](@extref),
+    [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.ACBus`](@extref),
     rather than by generator
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
@@ -289,13 +289,13 @@ instead of CairoMakie.
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : color palette from [`load_palette`](@ref)
 """
-function plot_demand!(p, result::Union{IS.Results, PSY.System}; kwargs...)
+function plot_demand!(p, result::Union{IS.Outputs, PSY.System}; kwargs...)
     return _plot_demand!(p, result, CairoMakieBackend(); kwargs...)
 end
 
 @doc (@doc plot_demand!) function plot_demand_plotly!(
     p,
-    result::Union{IS.Results, PSY.System};
+    result::Union{IS.Outputs, PSY.System};
     kwargs...,
 )
     return _plot_demand!(p, result, PlotlyLightBackend(); kwargs...)
@@ -645,7 +645,7 @@ and assigns each fuel type a specific color.
 
 # Arguments
 
-- `res::`[`InfrastructureSystems.Results`](@extref): 
+- `res::`[`InfrastructureSystems.Outputs`](@extref): 
     A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
     to be plotted
 
@@ -676,11 +676,11 @@ plot = plot_fuel(res)
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """
-function plot_fuel(result::IS.Results; kwargs...)
+function plot_fuel(result::IS.Outputs; kwargs...)
     return plot_fuel!(_empty_plot(), result; kwargs...)
 end
 
-@doc (@doc plot_fuel) function plot_fuel_plotly(result::IS.Results; kwargs...)
+@doc (@doc plot_fuel) function plot_fuel_plotly(result::IS.Outputs; kwargs...)
     return plot_fuel_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
@@ -691,7 +691,7 @@ _report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
 _report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
     plot_fuel_plotly(result; kwargs...)
 
-function _plot_fuel!(p, result::IS.Results, backend; kwargs...)
+function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     curtailment = get(kwargs, :curtailment, true)
@@ -803,7 +803,7 @@ PlotlyLight backend instead of CairoMakie.
 # Arguments
 
 - `plot`: existing plot handle returned by a previous PowerGraphics plot call (optional; e.g. [`plot_fuel`](@ref))
-- `res::`[`InfrastructureSystems.Results`](@extref):
+- `res::`[`InfrastructureSystems.Outputs`](@extref):
     A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
     to be plotted
 
@@ -828,11 +828,11 @@ PlotlyLight backend instead of CairoMakie.
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
-function plot_fuel!(p, result::IS.Results; kwargs...)
+function plot_fuel!(p, result::IS.Outputs; kwargs...)
     return _plot_fuel!(p, result, CairoMakieBackend(); kwargs...)
 end
 
-@doc (@doc plot_fuel!) function plot_fuel_plotly!(p, result::IS.Results; kwargs...)
+@doc (@doc plot_fuel!) function plot_fuel_plotly!(p, result::IS.Outputs; kwargs...)
     return _plot_fuel!(p, result, PlotlyLightBackend(); kwargs...)
 end
 
