@@ -23,7 +23,7 @@ function PowerGraphics._dataframe_plots_internal(
     # for a fresh plot.
     isnothing(plot) && (plot = PowerGraphics._empty_plot(backend))
 
-    ndf = PowerGraphics.PA.no_datetime(variable)
+    ndf = PowerGraphics.PA.get_data_df(variable)
     names = [label_fn(name) for name in DataFrames.names(ndf)]
     plot_length = length(plot.data)
     seriescolor = permutedims(

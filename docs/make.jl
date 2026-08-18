@@ -7,7 +7,7 @@ using Literate
 
 links = InterLinks(
     "PowerSystems" => "https://sienna-platform.github.io/PowerSystems.jl/stable/",
-    "PowerSimulations" => "https://sienna-platform.github.io/PowerSimulations.jl/stable/",
+    "InfrastructureOptimizationModels" => "https://sienna-platform.github.io/InfrastructureOptimizationModels.jl/stable/",
     "InfrastructureSystems" => "https://sienna-platform.github.io/InfrastructureSystems.jl/stable/",
     "DataFrames" => "https://dataframes.juliadata.org/stable/",
 )

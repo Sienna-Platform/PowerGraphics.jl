@@ -6,8 +6,11 @@ CurrentModule = PowerGraphics
 
 ## Overview
 
-`PowerGraphics.jl` is a [`Julia`](http://www.julialang.org) package for plotting results
-from [PowerSimulations.jl](https://sienna-platform.github.io/PowerSimulations.jl/latest/).
+`PowerGraphics.jl` is a [`Julia`](http://www.julialang.org) package for plotting the outputs
+of a Sienna\Ops optimization problem, built on
+[PowerSystems.jl](https://sienna-platform.github.io/PowerSystems.jl/stable/),
+[InfrastructureSystems.jl](https://sienna-platform.github.io/InfrastructureSystems.jl/stable/),
+and [PowerAnalytics.jl](https://sienna-platform.github.io/PowerAnalytics.jl/stable/).
 
 ## About Sienna
 

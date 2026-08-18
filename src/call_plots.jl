@@ -15,11 +15,10 @@ end
 _display_plot(::CairoMakieBackend, p) = display(p.figure)
 _display_plot(::PlotlyLightBackend, p) = display(p)
 
-# Translation table for the user-facing `aggregate::String` kwarg of
-# `plot_demand` to the typed `aggregation::Type` kwarg expected by
-# `PowerAnalytics.get_load_data(::PSY.System; aggregation = …)`. The
-# `IS.Outputs` branch of `get_load_data` ignores `aggregation` entirely, so
-# the translation is a safe no-op there.
+# Translation table for the user-facing `aggregate::String` kwarg of `plot_demand` to the
+# typed `aggregation::Type` kwarg consumed by `_system_demand_dataframe` (the `PSY.System`
+# branch of `_demand_dataframe` in `plot_data.jl`). The `IS.Outputs` branch always
+# aggregates to a single system-wide total, so the translation is a safe no-op there.
 const _AGGREGATE_STRING_TO_TYPE =
     Dict("System" => PSY.System, "Bus" => PSY.ACBus, "PowerLoad" => PSY.PowerLoad)
 
@@ -77,7 +76,7 @@ function _resolve_power_units(df::DataFrames.DataFrame, kwargs)
         divisor = something(user_scale, 1.0)
         unit = bar ? "MWh" : "MW"
     else
-        mat = Matrix(PA.no_datetime(df))
+        mat = Matrix(PA.get_data_df(df))
         peak = if isempty(mat)
             0.0
         else
@@ -141,14 +140,17 @@ Plots the demand in the system.
 
 # Arguments
 
-- `res::Union{`[`InfrastructureSystems.Outputs`](@extref)`, `[`PowerSystems.System`](@extref)`}`: 
-    A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
+- `res::Union{InfrastructureSystems.Outputs, `[`PowerSystems.System`](@extref)`}`:
+    Model outputs (e.g., `InfrastructureOptimizationModels.OptimizationProblemOutputs`)
     or [`PowerSystems.System`](@extref) to plot the demand from
 
 # Example
 
 ```julia
-res = PowerSimulations.solve_op_problem!(OpProblem)
+model = PowerOperationsModels.DecisionModel(template, sys; optimizer = HiGHS.Optimizer)
+PowerOperationsModels.build!(model; output_dir = mktempdir())
+PowerOperationsModels.solve!(model)
+res = InfrastructureOptimizationModels.OptimizationProblemOutputs(model)
 plot = plot_demand(res)
 ```
 
@@ -168,7 +170,7 @@ plot = plot_demand(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -193,12 +195,11 @@ function _plot_demand!(p, result::Union{IS.Outputs, PSY.System}, backend; kwargs
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
 
-    # Translate the user-facing `aggregate::String` kwarg into PA's typed
-    # `aggregation` kwarg before calling `get_load_data`.
+    # Translate the user-facing `aggregate::String` kwarg into the typed `aggregation`
+    # kwarg consumed by the `PSY.System` branch of `_demand_dataframe`.
     kwargs = _translate_demand_aggregate(kwargs)
-    load = PA.get_load_data(result; kwargs...)
-    # Build a mutable copy with defaults so we splat exactly once below.
-    kwargs = popkwargs(kwargs, :filter_func)
+    _has_loads(_source_system(result)) || throw(ErrorException("No load data found"))
+
     # Optional per-timestep load added to demand (e.g. storage charging or source
     # input, so the net-load line matches the top of the generation stack in `plot_fuel!`).
     extra_load = get(kwargs, :extra_load, nothing)
@@ -210,11 +211,10 @@ function _plot_demand!(p, result::Union{IS.Outputs, PSY.System}, backend; kwargs
     kwargs[:seriescolor] =
         get(kwargs, :seriescolor, get_palette_seriescolor(backend, palette))
 
-    load_agg = PA.combine_categories(load.data)
-
-    if isnothing(load_agg)
-        throw(ErrorException("No load data found"))
-    end
+    demand = _demand_dataframe(result, kwargs)
+    kwargs = popkwargs(kwargs, :filter_func)
+    load_agg = PA.get_data_df(demand)
+    time_vec = PA.get_time_vec(demand)
 
     if !isnothing(extra_load)
         el = collect(extra_load)
@@ -231,7 +231,7 @@ function _plot_demand!(p, result::Union{IS.Outputs, PSY.System}, backend; kwargs
     p = _plot_dataframe!(
         p,
         load_agg,
-        load.time,
+        time_vec,
         backend;
         y_label = y_label,
         set_display = false,
@@ -261,8 +261,8 @@ instead of CairoMakie.
 # Arguments
 
 - `plot`: existing plot handle returned by a previous PowerGraphics plot call such as [`plot_demand`](@ref PowerGraphics.plot_demand)
-- `res::Union{`[`InfrastructureSystems.Outputs`](@extref)`, `[`PowerSystems.System`](@extref)`}`:
-    A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
+- `res::Union{InfrastructureSystems.Outputs, `[`PowerSystems.System`](@extref)`}`:
+    Model outputs (e.g., `InfrastructureOptimizationModels.OptimizationProblemOutputs`)
     or [`PowerSystems.System`](@extref) to plot the demand from
 
 # Accepted Key Words
@@ -283,7 +283,7 @@ instead of CairoMakie.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -319,9 +319,16 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 # Example
 
 ```julia
-var_name = :P__ThermalStandard
-df = PowerSimulations.read_variables_with_keys(results, names = [var_name])[var_name]
-time_range = PowerSimulations.get_realized_timestamps(results)
+key = InfrastructureOptimizationModels.VariableKey(
+    InfrastructureOptimizationModels.ActivePowerVariable,
+    PowerSystems.ThermalStandard,
+)
+df = InfrastructureOptimizationModels.read_outputs_with_keys(
+    res,
+    [key];
+    table_format = InfrastructureSystems.TableFormat.WIDE,
+)[key]
+time_range = InfrastructureOptimizationModels.get_realized_timestamps(res)
 plot = plot_dataframe(df, time_range)
 ```
 
@@ -336,12 +343,12 @@ plot = plot_dataframe(df, time_range)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
 function plot_dataframe(df::DataFrames.DataFrame; kwargs...)
-    return plot_dataframe!(_empty_plot(), PA.no_datetime(df), df.DateTime; kwargs...)
+    return plot_dataframe!(_empty_plot(), PA.get_data_df(df), df.DateTime; kwargs...)
 end
 function plot_dataframe(
     df::DataFrames.DataFrame,
@@ -357,7 +364,7 @@ end
 )
     return plot_dataframe_plotly!(
         _empty_plot_plotly(),
-        PA.no_datetime(df),
+        PA.get_data_df(df),
         df.DateTime;
         kwargs...,
     )
@@ -410,14 +417,14 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
 function plot_dataframe!(p, df::DataFrames.DataFrame; kwargs...)
     return _plot_dataframe!(
         p,
-        PA.no_datetime(df),
+        PA.get_data_df(df),
         df.DateTime,
         CairoMakieBackend();
         kwargs...,
@@ -440,7 +447,7 @@ end
 )
     return _plot_dataframe!(
         p,
-        PA.no_datetime(df),
+        PA.get_data_df(df),
         df.DateTime,
         PlotlyLightBackend();
         kwargs...,
@@ -456,20 +463,23 @@ function plot_dataframe_plotly!(
     return _plot_dataframe!(p, variable, time_range, PlotlyLightBackend(); kwargs...)
 end
 
-################################# Plotting PowerData ##########################
+################################# Plotting a Results Dictionary #######################
 
 """
-    plot_powerdata(powerdata)
+    plot_results(results)
 
-Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
-`PowerAnalytics.get_generation_data`
+Makes a plot from a results dictionary object. Unlike [`plot_demand`](@ref) and
+[`plot_fuel`](@ref), the input here is a plain user-supplied dictionary, not an outputs
+container with a `ComponentSelector` to resolve — each key becomes one output series, the
+sum of that key's data columns.
 
 # Arguments
 
-- `powerdata::PowerAnalytics.PowerData`: The `PowerData` object to be plotted
+- `results::Dict{String, DataFrame}`: The results to be plotted
 
 # Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
+- `names::Union{Vector{String}, Vector{Symbol}}`: fix the order (and, if a subset, the
+  selection) of the `results` keys plotted; defaults to all of them in dictionary order
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
@@ -480,37 +490,36 @@ Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
-function plot_powerdata(powerdata::PA.PowerData; kwargs...)
-    return plot_powerdata!(_empty_plot(), powerdata; kwargs...)
+function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
+    return plot_results!(_empty_plot(), results; kwargs...)
 end
 
-@doc (@doc plot_powerdata) function plot_powerdata_plotly(
-    powerdata::PA.PowerData;
+@doc (@doc plot_results) function plot_results_plotly(
+    results::Dict{String, DataFrames.DataFrame};
     kwargs...,
 )
-    return plot_powerdata_plotly!(_empty_plot_plotly(), powerdata; kwargs...)
+    return plot_results_plotly!(_empty_plot_plotly(), results; kwargs...)
 end
 
-function _plot_powerdata!(p, powerdata::PA.PowerData, backend; kwargs...)
+function _plot_results!(p, results::Dict{String, DataFrames.DataFrame}, backend; kwargs...)
     title = get(kwargs, :title, "")
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
+    names = get(kwargs, :names, nothing)
 
-    if get(kwargs, :combine_categories, true)
-        aggregate = get(kwargs, :aggregate, nothing)
-        names = get(kwargs, :names, nothing)
-        data = PA.combine_categories(powerdata.data; names = names, aggregate = aggregate)
-    else
-        data = powerdata.data
-    end
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+    combined = _combine_categories(results; names = names)
+    data = PA.get_data_df(combined)
+    time_vec = PA.get_time_vec(combined)
 
-    p = _plot_dataframe!(p, data, powerdata.time, backend; set_display = false, kwargs...)
+    kwargs = Dict{Symbol, Any}(
+        (k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display, :names]
+    )
+
+    p = _plot_dataframe!(p, data, time_vec, backend; set_display = false, kwargs...)
 
     set_display && _display_plot(backend, p)
     if !isnothing(save_fig)
@@ -522,86 +531,11 @@ function _plot_powerdata!(p, powerdata::PA.PowerData, backend; kwargs...)
 end
 
 """
-    plot_powerdata!(plot, powerdata)
-    plot_powerdata_plotly!(plot, powerdata)
-
-Makes a plot from a `PowerAnalytics.PowerData` object, such as the result of
-`PowerAnalytics.get_generation_data`, onto an existing plot handle. The `_plotly`
-variant renders with the PlotlyLight backend instead of CairoMakie.
-
-# Arguments
-
-- `plot`: existing plot handle returned by a previous PowerGraphics plot call (optional; e.g. [`plot_powerdata`](@ref))
-- `powerdata::PowerAnalytics.PowerData`: The `PowerData` object to be plotted
-
-# Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-"""
-function plot_powerdata!(p, powerdata::PA.PowerData; kwargs...)
-    return _plot_powerdata!(p, powerdata, CairoMakieBackend(); kwargs...)
-end
-
-@doc (@doc plot_powerdata!) function plot_powerdata_plotly!(
-    p,
-    powerdata::PA.PowerData;
-    kwargs...,
-)
-    return _plot_powerdata!(p, powerdata, PlotlyLightBackend(); kwargs...)
-end
-
-"""
-    plot_results(results)
-
-Makes a plot from a results dictionary object
-
-# Arguments
-
-- `results::Dict{String, DataFrame`: The results to be plotted
-
-# Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
-- `curtailment::Bool`: plot the curtailment with the variable
-- `set_display::Bool = true`: set to false to prevent the plots from displaying
-- `save::String = "file_path"`: set a file path to save the plots
-- `format::String = "png"`: file extension for saved plots. CairoMakie supports `"png"`, `"pdf"`, `"svg"`. PlotlyLight only supports `"html"` (other values are written as `.html` with a warning).
-- `seriescolor::Array`: Set different colors for the plots
-- `title::String = "Title"`: Set a title for the plots
-- `stack::Bool = true`: stack plot traces
-- `bar::Bool` : create bar plot
-- `nofill::Bool` : force empty area fill
-- `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
-- `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
-- `legend_font_size::Number`: override the legend label font size
-"""
-function plot_results(results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    return plot_powerdata!(_empty_plot(), PA.PowerData(results); kwargs...)
-end
-
-@doc (@doc plot_results) function plot_results_plotly(
-    results::Dict{String, DataFrames.DataFrame};
-    kwargs...,
-)
-    return plot_powerdata_plotly!(_empty_plot_plotly(), PA.PowerData(results); kwargs...)
-end
-
-"""
     plot_results!(plot, results)
+    plot_results_plotly!(plot, results)
 
-Makes a plot from a results dictionary
+Makes a plot from a results dictionary onto an existing plot handle. The `_plotly` variant
+renders with the PlotlyLight backend instead of CairoMakie.
 
 # Arguments
 
@@ -609,7 +543,8 @@ Makes a plot from a results dictionary
 - `results::Dict{String, DataFrame}`: The results to be plotted
 
 # Accepted Key Words
-- `combine_categories::Bool = false` : plot category values or each value in a category
+- `names::Union{Vector{String}, Vector{Symbol}}`: fix the order (and, if a subset, the
+  selection) of the `results` keys plotted; defaults to all of them in dictionary order
 - `curtailment::Bool`: plot the curtailment with the variable
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
 - `save::String = "file_path"`: set a file path to save the plots
@@ -620,12 +555,12 @@ Makes a plot from a results dictionary
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
 """
 function plot_results!(p, results::Dict{String, DataFrames.DataFrame}; kwargs...)
-    return plot_powerdata!(p, PA.PowerData(results); kwargs...)
+    return _plot_results!(p, results, CairoMakieBackend(); kwargs...)
 end
 
 @doc (@doc plot_results!) function plot_results_plotly!(
@@ -633,7 +568,7 @@ end
     results::Dict{String, DataFrames.DataFrame};
     kwargs...,
 )
-    return plot_powerdata_plotly!(p, PA.PowerData(results); kwargs...)
+    return _plot_results!(p, results, PlotlyLightBackend(); kwargs...)
 end
 
 ################################# Plotting Fuel Plot of Results ##########################
@@ -645,21 +580,25 @@ and assigns each fuel type a specific color.
 
 # Arguments
 
-- `res::`[`InfrastructureSystems.Outputs`](@extref): 
-    A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
+- `res::InfrastructureSystems.Outputs`:
+    Model outputs (e.g., `InfrastructureOptimizationModels.OptimizationProblemOutputs`)
     to be plotted
 
     # Example
 
 ```julia
-res = solve_op_problem!(OpProblem)
+res = InfrastructureOptimizationModels.OptimizationProblemOutputs(model)
 plot = plot_fuel(res)
 ```
 
 # Accepted Key Words
 - `generator_mapping_file` = "file_path" : file path to yaml defining generator category by fuel and primemover
-- `variables::Union{Nothing, Vector{Symbol}}` = nothing : specific variables to plot
-- `slacks::Bool = true` : display slack variables
+- `slack_selector::Union{Nothing, PowerSystems.ComponentSelector} = nothing` : plot the
+  system balance slack-up variable, selected and aggregated by this selector (e.g.
+  `PowerSystems.make_selector(PowerSystems.ACBus)` under a bus-balance network model, or
+  `PowerSystems.make_selector(PowerSystems.Area)` under an area-balance one). There is no
+  default: the correct index type depends on the network model, and guessing it risks
+  silently plotting the wrong slack. Omit (or pass `nothing`) to skip the slack series.
 - `load::Bool = true` : display load line
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
@@ -671,10 +610,9 @@ plot = plot_fuel(res)
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 """
 function plot_fuel(result::IS.Outputs; kwargs...)
     return plot_fuel!(_empty_plot(), result; kwargs...)
@@ -695,34 +633,59 @@ function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)
     save_fig = get(kwargs, :save, nothing)
     curtailment = get(kwargs, :curtailment, true)
-    slacks = get(kwargs, :slacks, true)
+    slack_selector = get(kwargs, :slack_selector, nothing)
     load = get(kwargs, :load, true)
     title = get(kwargs, :title, "Fuel")
     stack = get(kwargs, :stack, true)
     bar = get(kwargs, :bar, false)
     palette = get(kwargs, :palette, PALETTE)
-    kwargs =
-        Dict{Symbol, Any}((k, v) for (k, v) in kwargs if k ∉ [:title, :save, :set_display])
+    kwargs = Dict{Symbol, Any}(
+        (k, v) for (k, v) in kwargs if k ∉
+        [:title, :save, :set_display, :curtailment, :slack_selector, :filter_func]
+    )
+    metric_kwargs = (
+        start_time = get(kwargs, :initial_time, get(kwargs, :start_time, nothing)),
+        len = get(kwargs, :horizon, get(kwargs, :len, nothing)),
+    )
 
-    # Generation stack
-    gen = PA.get_generation_data(result; kwargs...)
-    sys = PA.PSI.get_system(result)
-    if sys === nothing
-        throw(
-            ArgumentError("No System data present: please run `set_system!(results, sys)`"),
+    _source_system(result)  # errors loudly if no System is attached
+
+    # Generation stack: categorization is the selector's grouping, and combination is the
+    # per-group aggregation `compute` already performs, so one call produces the whole stack.
+    selector = _categorized_generator_selector(kwargs)
+    df = PA.compute(PA.Metrics.calc_active_power, result, selector; metric_kwargs...)
+
+    if curtailment
+        curt_selector = _curtailable_selector()
+        curt_df = PA.compute(
+            PA.Metrics.calc_curtailment,
+            result,
+            curt_selector;
+            metric_kwargs...,
         )
+        df[!, "Curtailment"] = PA.get_data_vec(curt_df)
     end
-    cat = PA.make_fuel_dictionary(sys; kwargs...)
-    fuel = PA.categorize_data(gen.data, cat; curtailment = curtailment, slacks = slacks)
 
-    filter_func = get(kwargs, :filter_func, PSY.get_available)
-    kwargs = popkwargs(kwargs, :filter_func)
+    if !isnothing(slack_selector)
+        slack_group_selector = _single_group_selector(slack_selector)
+        slack_df = PA.compute(
+            PA.Metrics.calc_system_slack_up,
+            result,
+            slack_group_selector;
+            metric_kwargs...,
+        )
+        df[!, "Slack Up"] = PA.get_data_vec(slack_df)
+    end
+
+    kwargs = popkwargs(kwargs, :generator_mapping_file)
 
     # passing names here enforces order; append any fuel categories not in the palette
     palette_categories = get_palette_category(palette)
-    matched = intersect(palette_categories, keys(fuel))
-    unmatched = setdiff(keys(fuel), palette_categories)
-    fuel_agg = PA.combine_categories(fuel; names = vcat(matched, sort(collect(unmatched))))
+    data_cols = PA.get_data_cols(df)
+    matched = intersect(palette_categories, data_cols)
+    unmatched = setdiff(data_cols, palette_categories)
+    fuel_agg = df[:, vcat(matched, sort(collect(unmatched)))]
+    time_vec = PA.get_time_vec(df)
     y_label, power_scale = _resolve_power_units(fuel_agg, kwargs)
     kwargs = popkwargs(popkwargs(popkwargs(kwargs, :y_label), :power_scale), :auto_units)
 
@@ -734,7 +697,7 @@ function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
     p = _plot_dataframe!(
         p,
         fuel_agg,
-        gen.time,
+        time_vec,
         backend;
         stack = stack,
         seriescolor = seriescolor,
@@ -749,21 +712,19 @@ function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
 
     kwargs[:linestyle] = get(kwargs, :linestyle, :dash)
     kwargs[:linewidth] = get(kwargs, :linewidth, 3)
-    kwargs[:filter_func] = filter_func
 
     if load
-        # Net-load line = demand + storage charging + source input, so it coincides
-        # with the top of the generation stack (both are drawn as negative bands by
-        # the sign-aware stacker; only curtailment sits above the line).
+        # Net-load line = demand + storage charging + source input, so it coincides with
+        # the top of the generation stack (both are drawn as negative bands by the
+        # sign-aware stacker; only curtailment sits above the line). None of the current
+        # categories produce a " In" column (`categorized_generators` excludes storage),
+        # so `charge` is currently always `nothing`; kept so a selector that does include
+        # split storage/source columns is picked up automatically.
+        charge_cols = filter(c -> endswith(c, " In"), PA.get_data_cols(fuel_agg))
         charge = nothing
-        charge_cols = [k for k in keys(fuel) if endswith(k, " In")]
         if !isempty(charge_cols)
-            nrows = length(gen.time)
-            charge = zeros(nrows)
-            for k in charge_cols
-                m = Matrix(PA.no_datetime(fuel[k]))   # negative (charging)
-                charge .+= -vec(sum(m; dims = 2))     # -> positive load
-            end
+            m = Matrix(fuel_agg[:, charge_cols])   # negative (charging)
+            charge = -vec(sum(m; dims = 2))        # -> positive load
         end
         p = _plot_demand!(
             p,
@@ -776,6 +737,7 @@ function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
             set_display = false,
             stack = stack,
             seriescolor = ["black"],
+            extra_load = charge,
             kwargs...,
         )
     end
@@ -803,14 +765,18 @@ PlotlyLight backend instead of CairoMakie.
 # Arguments
 
 - `plot`: existing plot handle returned by a previous PowerGraphics plot call (optional; e.g. [`plot_fuel`](@ref))
-- `res::`[`InfrastructureSystems.Outputs`](@extref):
-    A `Results` object (e.g., [`PowerSimulations.SimulationProblemResults`](@extref))
+- `res::InfrastructureSystems.Outputs`:
+    Model outputs (e.g., `InfrastructureOptimizationModels.OptimizationProblemOutputs`)
     to be plotted
 
 # Accepted Key Words
 - `generator_mapping_file` = "file_path" : file path to yaml defining generator category by fuel and primemover
-- `variables::Union{Nothing, Vector{Symbol}}` = nothing : specific variables to plot
-- `slacks::Bool = true` : display slack variables
+- `slack_selector::Union{Nothing, PowerSystems.ComponentSelector} = nothing` : plot the
+  system balance slack-up variable, selected and aggregated by this selector (e.g.
+  `PowerSystems.make_selector(PowerSystems.ACBus)` under a bus-balance network model, or
+  `PowerSystems.make_selector(PowerSystems.Area)` under an area-balance one). There is no
+  default: the correct index type depends on the network model, and guessing it risks
+  silently plotting the wrong slack. Omit (or pass `nothing`) to skip the slack series.
 - `load::Bool = true` : display load line
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `set_display::Bool = true`: set to false to prevent the plots from displaying
@@ -822,10 +788,9 @@ PlotlyLight backend instead of CairoMakie.
 - `bar::Bool` : create bar plot
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
-- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
+- `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that `plot_results` and `plot_fuel` aggregate columns to category names before `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op for them.
 - `legend_position::Symbol = :right`: legend placement, `:right` or `:bottom`
 - `legend_font_size::Number`: override the legend label font size
-- `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).
 """
 function plot_fuel!(p, result::IS.Outputs; kwargs...)
@@ -836,6 +801,9 @@ end
     return _plot_fuel!(p, result, PlotlyLightBackend(); kwargs...)
 end
 
+# The 2-arg `save_plot(plot, filename)` form is defined per-backend via type
+# dispatch — see `ext/plot_recipes.jl` (CairoMakie) and `ext/plotly_recipes.jl`
+# (PlotlyLight).
 """
     save_plot(plot, filename)
 
@@ -851,7 +819,7 @@ PlotlyLight plots dispatch to the PlotlyLight writer (html).
 # Example
 
 ```julia
-res = solve_op_problem!(OpProblem)
+res = InfrastructureOptimizationModels.OptimizationProblemOutputs(model)
 plot = plot_fuel(res)
 save_plot(plot, "my_plot.png")               # CairoMakie
 plot = plot_fuel_plotly(res)
@@ -863,7 +831,4 @@ save_plot(plot, "my_plot.html")               # PlotlyLight
 - `height::Union{Nothing,Int}=nothing`
 - `scale::Union{Nothing,Real}=nothing`
 """
-# The 2-arg `save_plot(plot, filename)` form is defined per-backend via type
-# dispatch — see `ext/plot_recipes.jl` (CairoMakie) and `ext/plotly_recipes.jl`
-# (PlotlyLight).
 function save_plot end

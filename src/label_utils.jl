@@ -10,21 +10,21 @@ prefix to its acronym while keeping the full component name.
 # When does this fire?
 
 `label_fn` runs on the column names of the dataframe that is actually plotted.
-For `plot_powerdata` / `plot_results` / `plot_fuel`, the default
-`combine_categories = true` aggregates first — the resulting columns are bare
-category names (e.g. `"HydroDispatch"`, `"Natural Gas"`) without the `__`
-separator, so `label_short` is a no-op on them. To see shortening in action,
-pass `combine_categories = false` so the raw `Variable__Component` labels reach
-`label_fn`.
+`plot_results` and `plot_fuel` always aggregate to bare category/key names (e.g.
+`"HydroDispatch"`, `"Natural Gas"`) without a `__` separator, so `label_short` is a
+no-op on them. `label_fn` matters for `plot_dataframe` on a frame pulled straight
+from `PowerAnalytics.compute` with per-component grouping, where column names keep
+the `ComponentType__ComponentName` form.
 
 # Usage
 
 ```julia
-plot_powerdata(gen; combine_categories = false)                                # default: "APV: HydroDispatch"
-plot_powerdata(gen; combine_categories = false, label_fn = label_component)    # "HydroDispatch"
-plot_powerdata(gen; combine_categories = false, label_fn = label_acronym)      # "APV__HD"
-plot_powerdata(gen; combine_categories = false, label_fn = label_truncate(20)) # truncate to 20 chars
-plot_powerdata(gen; combine_categories = false, label_fn = s -> s)             # original full labels
+df = PA.get_data_df(PA.compute(PA.Metrics.calc_active_power, results, PA.make_selector(HydroDispatch)))
+plot_dataframe(df, time_range)                                # default: label_short
+plot_dataframe(df, time_range; label_fn = label_component)    # component name only
+plot_dataframe(df, time_range; label_fn = label_acronym)      # both halves as initials
+plot_dataframe(df, time_range; label_fn = label_truncate(20)) # truncate to 20 chars
+plot_dataframe(df, time_range; label_fn = s -> s)              # original full labels
 ```
 """
 
@@ -133,11 +133,11 @@ Can be composed with other label functions.
 
 # Example
 ```julia
-plot_powerdata(gen; label_fn = label_truncate(20))
+plot_dataframe(df, time_range; label_fn = label_truncate(20))
 # "ActivePowerVariable…"
 
 # Compose with label_short:
-plot_powerdata(gen; label_fn = s -> label_truncate(15)(label_short(s)))
+plot_dataframe(df, time_range; label_fn = s -> label_truncate(15)(label_short(s)))
 ```
 """
 function label_truncate(n::Int)

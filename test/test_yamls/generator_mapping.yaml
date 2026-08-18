@@ -32,10 +32,17 @@ Nuclear:
 Geothermal:
   - {gentype: Any, primemover: null, fuel: GEOTHERMAL}
 Biopower:
-  - {gentype: Any, primemover: null, fuel: AG_BIPRODUCT}
-  - {gentype: Any, primemover: null, fuel: WOOD_WASTE}
+  - {gentype: Any, primemover: null, fuel: AG_BYPRODUCT}
+  - {gentype: Any, primemover: null, fuel: WOOD_WASTE_SOLIDS}
+  - {gentype: Any, primemover: null, fuel: WOOD_WASTE_LIQUIDS}
 CSP:
   - {gentype: Any, primemover: CP, fuel: null}
 Other:
-  - {gentype: Any, primemover: OT, fuel: OTHER}
-  - {gentype: Any, primemover: null, fuel: null}
+  - {gentype: Generator, primemover: OT, fuel: OTHER}
+  # Fallback: any generator with no matched primemover/fuel, regardless of type. Scoped to
+  # Generator (not Any/StaticInjection) so it doesn't also catch loads/storage -- `gentype:
+  # Any` resolves to `root_type` (StaticInjection) in PA's parser, which is every component.
+  - {gentype: Generator, primemover: null, fuel: null}
+__META:
+  non_generators:
+    - Battery

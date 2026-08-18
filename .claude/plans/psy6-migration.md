@@ -4,12 +4,15 @@ PowerGraphics is downstream of PowerAnalytics, which is still PSI-based. PA move
 
 Both repos are on branch `psy6`, currently identical to `main`.
 
-> **Status: partially superseded — brainstorming in progress, not yet a final plan.**
-> The verified symbol map below still holds. Phases 1–3 do **not**: PowerAnalytics is owned by a
-> separate agent, and this repo no longer plans to touch it. The target agreed since writing this
-> is that **PG and PA depend on IS only — no IOM, no POM**. For PG that is reachable now:
-> its runtime surface is PSY + IS + PA, so POM/IOM appear only in `test/Project.toml`.
-> Superseding design decisions are recorded under "Agreed since" below.
+> **Status 2026-08-17: superseded by `2026-08-17-pg-refactor-onto-pa-metrics.md`.**
+> Phases 1–3 (PowerAnalytics) landed upstream in PA commit `1870a0c`. Phase 4 no longer
+> describes the PG work: that commit deleted PA's legacy data layer, and PG's plotting code is
+> built on it — `PowerData`, `get_generation_data`, `get_load_data`, `categorize_data`,
+> `make_fuel_dictionary`, `combine_categories`, `no_datetime` are all gone. PG needs a refactor
+> onto PA's metrics framework, not a symbol repoint.
+>
+> Still accurate here: the verified symbol map, the "PG's runtime surface is PSY + IS + PA"
+> target, and the `IS.get_source_data` decision.
 
 ## Decisions taken
 

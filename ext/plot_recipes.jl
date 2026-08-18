@@ -43,7 +43,7 @@ function PowerGraphics._dataframe_plots_internal(
         plot = PowerGraphics._empty_plot(backend)
     end
 
-    ndf = PowerGraphics.PA.no_datetime(variable)
+    ndf = PowerGraphics.PA.get_data_df(variable)
     column_names = DataFrames.names(ndf)
     existing_series = plot.series_count
     seriescolor = PowerGraphics.set_seriescolor(

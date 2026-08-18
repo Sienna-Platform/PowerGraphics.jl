@@ -4,12 +4,10 @@ module PowerGraphics
 export load_palette
 export plot_demand, plot_demand_plotly
 export plot_dataframe, plot_dataframe_plotly
-export plot_powerdata, plot_powerdata_plotly
 export plot_results, plot_results_plotly
 export plot_fuel, plot_fuel_plotly
 export plot_demand!, plot_demand_plotly!
 export plot_dataframe!, plot_dataframe_plotly!
-export plot_powerdata!, plot_powerdata_plotly!
 export plot_results!, plot_results_plotly!
 export plot_fuel!, plot_fuel_plotly!
 export report
@@ -36,6 +34,7 @@ const PA = PowerAnalytics
 include("backends.jl")
 include("definitions.jl")
 include("label_utils.jl")
+include("plot_data.jl")
 include("call_plots.jl")
 
 # Methods for these are provided by package extensions:

@@ -1,3 +1,7 @@
+# Parked: Weave requires JSON 0.21, but the psy6 stack requires JSON ^1.5. Weave cannot be
+# installed alongside it, so WeaveExt cannot be loaded or tested. See DISABLED_TEST_FILES
+# in runtests.jl.
+
 file_path = TEST_OUTPUTS
 
 function test_reports(file_path::String; backend_pkg::String = "cairomakie")

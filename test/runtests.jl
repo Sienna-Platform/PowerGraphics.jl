@@ -9,12 +9,10 @@ import InfrastructureSystems: Deterministic, Probabilistic, Scenarios, Forecast
 using PowerSystems
 using PowerGraphics
 using PowerAnalytics
-using PowerSimulations
-using StorageSystemsSimulations
+using InfrastructureOptimizationModels
+using PowerOperationsModels
 using HiGHS
-using Weave
 using TimeSeries
-using HydroPowerSimulations
 
 using CairoMakie
 using PlotlyLight
@@ -22,7 +20,8 @@ using PlotlyLight
 const PG = PowerGraphics
 const IS = InfrastructureSystems
 const PSY = PowerSystems
-const PSI = PowerSimulations
+const IOM = InfrastructureOptimizationModels
+const POM = PowerOperationsModels
 const PA = PowerAnalytics
 const LOG_FILE = "PowerGraphics-test.log"
 
@@ -39,8 +38,11 @@ const PSB = PowerSystemCaseBuilder
 template_dir = joinpath(BASE_DIR, "report_templates")
 const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 
-PA_DIR = string(dirname(dirname(pathof(PowerAnalytics))))
-include(joinpath(PA_DIR, "test", "test_data", "results_data.jl"))
+include(joinpath(TEST_DIR, "test_data", "outputs_data.jl"))
+
+# Weave requires JSON 0.21; the psy6 stack requires JSON ^1.5. Weave cannot be installed
+# alongside it, so WeaveExt cannot be loaded or tested here.
+const DISABLED_TEST_FILES = ["test_reports.jl"]
 
 LOG_LEVELS = Dict(
     "Debug" => Logging.Debug,
@@ -72,7 +74,11 @@ macro includetests(testarg...)
             tests = map(f -> string(f, ".jl"), tests)
         end
         println()
+        if !isempty(DISABLED_TEST_FILES)
+            @warn("Some tests are disabled $DISABLED_TEST_FILES")
+        end
         for test in tests
+            test in DISABLED_TEST_FILES && continue
             print(splitext(test)[1], ": ")
             include(joinpath(TEST_DIR, test))
             println()
