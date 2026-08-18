@@ -35,13 +35,14 @@ const TEST_SIM_NAME = "results_sim"
 
 import PowerSystemCaseBuilder
 const PSB = PowerSystemCaseBuilder
-template_dir = joinpath(BASE_DIR, "report_templates")
-const generic_template = joinpath(template_dir, "generic_report_template.jmd")
+# Retired with WeaveExt; the template is inert. See ext/WeaveExt.jl.
+# template_dir = joinpath(BASE_DIR, "report_templates")
+# const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 
 include(joinpath(TEST_DIR, "test_data", "outputs_data.jl"))
 
-# Weave requires JSON 0.21; the psy6 stack requires JSON ^1.5. Weave cannot be installed
-# alongside it, so WeaveExt cannot be loaded or tested here.
+# WeaveExt is retired: Weave.jl is unmaintained and pins JSON 0.21 against the psy6
+# stack's JSON ^1.5. See ext/WeaveExt.jl.
 const DISABLED_TEST_FILES = ["test_reports.jl"]
 
 LOG_LEVELS = Dict(

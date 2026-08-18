@@ -622,12 +622,12 @@ end
     return plot_fuel_plotly!(_empty_plot_plotly(), result; kwargs...)
 end
 
-# Backend-dispatched entry point for the Weave report template so the template
-# stays backend-agnostic instead of branching on the backend type.
-_report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
-    plot_fuel(result; kwargs...)
-_report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
-    plot_fuel_plotly(result; kwargs...)
+# Retired with WeaveExt: this existed only so the Weave report template could stay
+# backend-agnostic. See ext/WeaveExt.jl.
+# _report_plot_fuel(::CairoMakieBackend, result; kwargs...) =
+#     plot_fuel(result; kwargs...)
+# _report_plot_fuel(::PlotlyLightBackend, result; kwargs...) =
+#     plot_fuel_plotly(result; kwargs...)
 
 function _plot_fuel!(p, result::IS.Outputs, backend; kwargs...)
     set_display = get(kwargs, :set_display, true)

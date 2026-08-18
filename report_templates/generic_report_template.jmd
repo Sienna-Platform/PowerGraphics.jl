@@ -1,51 +1,66 @@
----
-title : Weave example
-author : Sienna
-date : 1-14
----
+<!--
+RETIRED. This template is inert.
 
-# Bar Plots
+It was rendered by WeaveExt, which is retired: Weave.jl is unmaintained and pins
+JSON 0.21 against the psy6 stack's JSON ^1.5, so it cannot be installed at all.
 
-```julia; echo = false
-using PowerGraphics
-using PowerAnalytics
+Its code chunks are also stale beyond Weave: `PowerGraphics._report_plot_fuel` is
+commented out (see src/call_plots.jl), and `get_generation_data`, `get_load_data`
+and `get_service_data` were deleted from PowerAnalytics in the psy6 port. The
+replacements are `PA.compute` over a ComponentSelector.
 
-PowerGraphics._report_plot_fuel(
-    WEAVE_ARGS["backend"],
-    WEAVE_ARGS["results"];
-    bar = true,
-    stack = true,
-)
-```
+Kept as a record of what a report contained, for whoever writes a replacement.
+The original source follows, commented out.
+-->
 
-# Stack Plots
+<!-- --- -->
+<!-- title : Weave example -->
+<!-- author : Sienna -->
+<!-- date : 1-14 -->
+<!-- --- -->
 
-```julia; echo = false
-PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
-```
+<!-- # Bar Plots -->
 
-# Tables
+<!-- ```julia; echo = false -->
+<!-- using PowerGraphics -->
+<!-- using PowerAnalytics -->
 
-### Generation
-```julia; echo = false
-for (k,v) in  get_generation_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
+<!-- PowerGraphics._report_plot_fuel( -->
+<!--     WEAVE_ARGS["backend"], -->
+<!--     WEAVE_ARGS["results"]; -->
+<!--     bar = true, -->
+<!--     stack = true, -->
+<!-- ) -->
+<!-- ``` -->
 
-### Load
-```julia; echo = false
-for (k,v) in  get_load_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
+<!-- # Stack Plots -->
 
-### Services
-```julia; echo = false
-for (k,v) in  get_service_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
+<!-- ```julia; echo = false -->
+<!-- PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"]) -->
+<!-- ``` -->
+
+<!-- # Tables -->
+
+<!-- ### Generation -->
+<!-- ```julia; echo = false -->
+<!-- for (k,v) in  get_generation_data(WEAVE_ARGS["results"]).data -->
+<!--     display(k) -->
+<!--     display(v) -->
+<!-- end -->
+<!-- ``` -->
+
+<!-- ### Load -->
+<!-- ```julia; echo = false -->
+<!-- for (k,v) in  get_load_data(WEAVE_ARGS["results"]).data -->
+<!--     display(k) -->
+<!--     display(v) -->
+<!-- end -->
+<!-- ``` -->
+
+<!-- ### Services -->
+<!-- ```julia; echo = false -->
+<!-- for (k,v) in  get_service_data(WEAVE_ARGS["results"]).data -->
+<!--     display(k) -->
+<!--     display(v) -->
+<!-- end -->
+<!-- ``` -->

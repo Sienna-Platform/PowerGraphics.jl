@@ -10,7 +10,8 @@ export plot_demand!, plot_demand_plotly!
 export plot_dataframe!, plot_dataframe_plotly!
 export plot_results!, plot_results_plotly!
 export plot_fuel!, plot_fuel_plotly!
-export report
+# `report` is retired along with WeaveExt — see ext/WeaveExt.jl.
+# export report
 export save_plot
 export label_component, label_variable, label_acronym, label_first_word
 export label_short, label_truncate
@@ -41,8 +42,9 @@ include("call_plots.jl")
 #   - `_empty_plot(::PlottingBackend)` — CairoMakieExt / PlotlyLightExt
 #   - `_dataframe_plots_internal(p, df, time, ::PlottingBackend; kwargs...)` — same
 #   - `save_plot(plot, filename, ::PlottingBackend; kwargs...)` — same
-#   - `report(results, out_path, template; kwargs...)` — WeaveExt
-function report end
+# `report` is retired: Weave.jl is unmaintained and cannot coexist with the psy6 JSON
+# requirement, so WeaveExt can never load. See ext/WeaveExt.jl.
+# function report end
 
 function _no_backend_loaded()
     throw(
