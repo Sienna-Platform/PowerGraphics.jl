@@ -618,7 +618,9 @@ function _plot_demand!(p, result::Union{IS.Results, PSY.System}, backend; kwargs
     set_display = get(kwargs, :set_display, true)
     bar = get(kwargs, :bar, false)
 
-    title = get(kwargs, :title, "Demand")
+    title_raw = get(kwargs, :title, "Demand")
+    title = (isnothing(title_raw) || title_raw == _NO_TITLE_SENTINEL) ? nothing :
+            String(title_raw)
     y_label = get(kwargs, :y_label, bar ? "MWh" : "MW")
     palette = get(kwargs, :palette, PALETTE)
     save_file = _resolve_save_file(backend, title, kwargs)
