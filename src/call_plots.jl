@@ -329,6 +329,54 @@ function _PlotOptions(
 end
 
 """
+Number of time steps a requested horizon spans on a given time axis.
+
+An `Integer` horizon is already a step count and passes through untouched. A
+`Dates.Period` is converted with the resolution of the time axis so that, on an
+hourly axis, `horizon = Dates.Hour(12)` selects exactly the same rows as
+`horizon = 12`. This mirrors `PowerAnalytics.get_load_data`, which performs the
+same conversion on the `PSY.System` path; without it the `IS.Results` path would
+reject a `Period` horizon that the `PSY.System` path accepts.
+"""
+_horizon_steps(horizon::Integer, time::AbstractVector) = horizon
+
+function _horizon_steps(horizon::Dates.FixedPeriod, time::AbstractVector)
+    # The resolution can only be read off the axis itself, which needs two
+    # timestamps; an `Integer` horizon has no such requirement.
+    length(time) >= 2 || throw(
+        ArgumentError(
+            "cannot infer the time-axis resolution needed to convert the horizon " *
+            "$horizon from $(length(time)) timestamp(s): at least 2 are required. " *
+            "Pass the horizon as an integer number of time periods instead.",
+        ),
+    )
+    resolution = time[2] - time[1]
+    steps = Dates.Millisecond(horizon) / Dates.Millisecond(resolution)
+    # Guard the division explicitly: `Int64(x / y)` would surface as a bare
+    # `InexactError` that names neither the horizon nor the resolution.
+    isinteger(steps) || throw(
+        ArgumentError(
+            "horizon $horizon is not a whole multiple of the time-axis resolution " *
+            "$(Dates.canonicalize(resolution)); request a horizon divisible by the " *
+            "resolution or an integer number of time periods.",
+        ),
+    )
+    return Int(steps)
+end
+
+# `Dates.Month`/`Dates.Year` have no fixed length in milliseconds, so they cannot
+# be divided by a resolution at all; say so instead of failing inside `Dates`.
+function _horizon_steps(horizon::Dates.Period, time::AbstractVector)
+    throw(
+        ArgumentError(
+            "horizon $horizon has no fixed duration and cannot be converted to a " *
+            "number of time periods; use a fixed period (e.g. `Dates.Hour`, " *
+            "`Dates.Day`) or an integer number of time periods.",
+        ),
+    )
+end
+
+"""
 Row indices selecting the user-requested time window from a full results time
 axis; the legacy `initial_time`/`horizon` kwarg spellings stay accepted
 alongside `start_time`/`len`. Slicing locally instead of forwarding to
@@ -348,11 +396,14 @@ function _time_window_indices(time::AbstractVector, kwargs)
     else
         found = findfirst(==(start_time), time)
         isnothing(found) && throw(
-            ArgumentError("start_time $start_time is not one of the results timestamps"),
+            ArgumentError(
+                "the requested initial time $start_time is not one of the results " *
+                "timestamps (which run from $(first(time)) to $(last(time)))",
+            ),
         )
         found
     end
-    i1 = isnothing(len) ? length(time) : i0 + len - 1
+    i1 = isnothing(len) ? length(time) : i0 + _horizon_steps(len, time) - 1
     i1 <= length(time) || throw(
         ArgumentError(
             "the requested time window ends after the results end ($(last(time)))",
@@ -385,7 +436,7 @@ plot = plot_demand(res)
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 $(_COMMON_PLOT_KWARGS)
@@ -552,7 +603,7 @@ reporting, so the two deliberately differ.
 
 # Accepted Key Words
 
-- `horizon::Int64`: number of time periods to return, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 - `initial_time::DateTime`: start at a time other than the results initial time (`start_time` is accepted as an alias)
 - `filter_func::Function`: filter components included in the total
 """
@@ -589,7 +640,7 @@ columns are grouped.
 
 # Accepted Key Words
 
-- `horizon::Int64`: number of time periods to return, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 - `initial_time::DateTime`: start at a time other than the system initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: group the demand columns by something other than generator
 - `filter_func::Function`: filter components included in the total
@@ -692,7 +743,7 @@ or extends `plot`; pass the `backend` key word to pick the renderer.
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand by
     [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.Bus`](@extref),
@@ -1014,7 +1065,7 @@ plot = plot_fuel(res)
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
-- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 $(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 $(_BACKEND_KWARG)
@@ -1631,7 +1682,7 @@ renderer.
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
 - `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
-- `horizon::Int64`: number of time periods to plot, counted from `initial_time` (`len` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
 $(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).

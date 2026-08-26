@@ -248,6 +248,46 @@ function test_fuel_stack(backend_pkg::String, backend::PG.PlottingBackend)
         )
         @test series_values(p_sl, "Load") ≈ expected[25:26, "Load"]
 
+        # A `Dates.Period` horizon means the same thing as the equivalent integer
+        # count of time periods. The `PSY.System` path has always accepted one
+        # (PowerAnalytics converts it); the results path used to raise a
+        # MethodError deep in the stack.
+        resolution = load_uc.time[2] - load_uc.time[1]
+        @test resolution == Hour(1)  # the fixture the horizons below assume
+        p_p = plot_demand(
+            fuel_results_uc;
+            backend = backend,
+            set_display = false,
+            horizon = Hour(3),
+        )
+        @test series_values(p_p, "Load") ≈ series_values(p_h, "Load")
+
+        p_pit = plot_demand(
+            fuel_results_uc;
+            backend = backend,
+            set_display = false,
+            initial_time = t0,
+            len = Hour(2),
+        )
+        @test series_values(p_pit, "Load") ≈ expected[25:26, "Load"]
+
+        # A horizon that is not a whole multiple of the resolution is rejected up
+        # front, not as an InexactError from the underlying division.
+        @test_throws ArgumentError plot_demand(
+            fuel_results_uc;
+            backend = backend,
+            set_display = false,
+            horizon = Minute(90),
+        )
+
+        # A `Dates.Period` horizon needs two timestamps to infer the resolution;
+        # an integer horizon does not.
+        @test_throws ArgumentError PG._time_window_indices(
+            load_uc.time[1:1],
+            Dict(:horizon => Hour(1)),
+        )
+        @test PG._time_window_indices(load_uc.time[1:1], Dict(:horizon => 1)) == 1:1
+
         # filter_func restricts which loads are included.
         only_bus2 = x -> get_name(get_bus(x)) == "bus2"
         expected_f = PA.combine_categories(
