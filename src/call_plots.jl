@@ -62,28 +62,6 @@ function _translate_demand_aggregate(kwargs)
     return out
 end
 
-# `start_time`/`len` are documented aliases of `initial_time`/`horizon`. This is
-# the only place the two spellings are related; both the `IS.Results` row slicing
-# in `_time_window_indices` and the `PSY.System` forwarding below read it.
-const _WINDOW_ALIASES = (initial_time = :start_time, horizon = :len)
-
-function _window_kwarg(kwargs, canonical::Symbol)
-    return get(kwargs, canonical, get(kwargs, _WINDOW_ALIASES[canonical], nothing))
-end
-
-# `PowerAnalytics.get_load_data(::PSY.System)` reads only the canonical spellings,
-# so an aliased window has to be normalized before forwarding or a `PSY.System`
-# plot would silently ignore it. Returns a fresh `Dict{Symbol,Any}` regardless so
-# callers can keep mutating it.
-function _translate_demand_window(kwargs)
-    out = Dict{Symbol, Any}(kwargs)
-    for canonical in keys(_WINDOW_ALIASES)
-        value = _window_kwarg(out, canonical)
-        isnothing(value) || (out[canonical] = value)
-    end
-    return out
-end
-
 """
 Pick a power unit and scaling divisor from the peak magnitude of the plotted
 totals (values are assumed to be in MW): `< 1e3 → MW`, `[1e3, 1e6) → GW`,
@@ -377,9 +355,8 @@ function _horizon_steps(horizon::Dates.Period, time::AbstractVector)
 end
 
 """
-Row indices selecting the user-requested time window from a full results time
-axis; the legacy `initial_time`/`horizon` kwarg spellings stay accepted
-alongside `start_time`/`len`. Slicing locally instead of forwarding to
+Row indices selecting the user-requested time window (`initial_time`/`horizon`)
+from a full results time axis. Slicing locally instead of forwarding to
 `PowerAnalytics.compute` is deliberate: `compute` rejects unknown kwargs and,
 in PowerAnalytics 1.4, mishandles time windows on simulation results (`len` is
 treated as an execution count), so local row slicing is the only way to
@@ -387,23 +364,23 @@ preserve the old windowing behavior.
 """
 # TODO upstream: fix `compute` time-window key words in PowerAnalytics
 # (https://github.com/PabloBotin/PowerAnalytics.jl/issues/1), then forward
-# `start_time`/`len` directly.
+# `initial_time`/`horizon` directly.
 function _time_window_indices(time::AbstractVector, kwargs)
-    start_time = _window_kwarg(kwargs, :initial_time)
-    len = _window_kwarg(kwargs, :horizon)
-    i0 = if isnothing(start_time)
+    initial_time = get(kwargs, :initial_time, nothing)
+    horizon = get(kwargs, :horizon, nothing)
+    i0 = if isnothing(initial_time)
         1
     else
-        found = findfirst(==(start_time), time)
+        found = findfirst(==(initial_time), time)
         isnothing(found) && throw(
             ArgumentError(
-                "the requested initial time $start_time is not one of the results " *
+                "the requested initial time $initial_time is not one of the results " *
                 "timestamps (which run from $(first(time)) to $(last(time)))",
             ),
         )
         found
     end
-    i1 = isnothing(len) ? length(time) : i0 + _horizon_steps(len, time) - 1
+    i1 = isnothing(horizon) ? length(time) : i0 + _horizon_steps(horizon, time) - 1
     i1 <= length(time) || throw(
         ArgumentError(
             "the requested time window ends after the results end ($(last(time)))",
@@ -436,8 +413,8 @@ plot = plot_demand(res)
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand other than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path always aggregates to a single "Load" trace and ignores `aggregate` entirely.
 $(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
@@ -546,18 +523,19 @@ end
 
 # System path: the new API cannot read demand straight from a `PSY.System`, so
 # this stays on the old PowerAnalytics interface, including the
-# `aggregate::String` → `aggregation::Type` translation and the
-# `start_time`/`len` alias normalization.
+# `aggregate::String` → `aggregation::Type` translation.
 function _demand_data(system::PSY.System; kwargs...)
-    kwargs = _translate_demand_aggregate(_translate_demand_window(kwargs))
+    kwargs = _translate_demand_aggregate(kwargs)
     load = PA.get_load_data(system; kwargs...)
     return (PA.combine_categories(load.data), load.time)
 end
 
 # Unset key words are dropped rather than forwarded as `nothing`, because the
-# window readers distinguish "absent" from "nothing": forwarding an explicit
-# `initial_time = nothing` would satisfy the lookup and stop `start_time` from
-# ever being consulted.
+# `PSY.System` path distinguishes "absent" from "nothing":
+# `PowerAnalytics.get_load_data` falls back to
+# `PSY.get_forecast_horizon(system)`/`PSY.get_forecast_initial_timestamp(system)`
+# via `get(kwargs, :horizon, ...)`, so forwarding an explicit `horizon = nothing`
+# would clobber that default with `nothing` instead of letting it apply.
 function _demand_frame(result; kwargs...)
     passed = Dict{Symbol, Any}((k, v) for (k, v) in kwargs if !isnothing(v))
     data, time = _demand_data(result; passed...)
@@ -603,25 +581,21 @@ reporting, so the two deliberately differ.
 
 # Accepted Key Words
 
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
-- `initial_time::DateTime`: start at a time other than the results initial time (`start_time` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
+- `initial_time::DateTime`: start at a time other than the results initial time
 - `filter_func::Function`: filter components included in the total
 """
 function get_demand_data(
     results::IS.Results;
     filter_func = nothing,
     initial_time = nothing,
-    start_time = nothing,
     horizon = nothing,
-    len = nothing,
 )
     return _demand_frame(
         results;
         filter_func = filter_func,
         initial_time = initial_time,
-        start_time = start_time,
         horizon = horizon,
-        len = len,
     )
 end
 
@@ -640,8 +614,8 @@ columns are grouped.
 
 # Accepted Key Words
 
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
-- `initial_time::DateTime`: start at a time other than the system initial time (`start_time` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to return, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
+- `initial_time::DateTime`: start at a time other than the system initial time
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: group the demand columns by something other than generator
 - `filter_func::Function`: filter components included in the total
 """
@@ -650,18 +624,14 @@ function get_demand_data(
     aggregate = nothing,
     filter_func = nothing,
     initial_time = nothing,
-    start_time = nothing,
     horizon = nothing,
-    len = nothing,
 )
     return _demand_frame(
         system;
         aggregate = aggregate,
         filter_func = filter_func,
         initial_time = initial_time,
-        start_time = start_time,
         horizon = horizon,
-        len = len,
     )
 end
 
@@ -743,8 +713,8 @@ or extends `plot`; pass the `backend` key word to pick the renderer.
 # Accepted Key Words
 
 - `linestyle::Symbol = :dash` : set line style
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
 - `aggregate::String = "System", "PowerLoad", or "Bus"`: aggregate the demand by
     [`PowerSystems.System`](@extref), [`PowerSystems.PowerLoad`](@extref), or [`PowerSystems.Bus`](@extref),
     rather than by generator. Applies ONLY to the `PSY.System` input; the `IS.Results` path
@@ -1064,8 +1034,8 @@ plot = plot_fuel(res)
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
 $(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 $(_BACKEND_KWARG)
@@ -1681,8 +1651,8 @@ renderer.
 - `curtailment::Bool = true`: To plot the curtailment in the stack plot
 - `storage::Bool = true`: include storage components (as "<category> In"/"<category> Out" traces)
 - `sources::Bool = true`: include source components (as "<category> In"/"<category> Out" traces)
-- `initial_time::DateTime`: To start the plot at a different time other than the results initial time (`start_time` is accepted as an alias)
-- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis (`len` is accepted as an alias)
+- `initial_time::DateTime`: To start the plot at a different time other than the results initial time
+- `horizon::Union{Int64, Dates.Period}`: number of time periods to plot, counted from `initial_time`; a `Dates.Period` (e.g. `Dates.Hour(12)`) is converted using the resolution of the time axis
 $(_COMMON_PLOT_KWARGS)
 - `filter_func::Function = `[`PowerSystems.get_available`](@extref PowerSystems InfrastructureSystems.get_available-Tuple{RenewableDispatch}): filter components included in plot
 - `palette` : Color palette as from [`load_palette`](@ref).

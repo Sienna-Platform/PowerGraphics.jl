@@ -177,34 +177,43 @@ end
     @test generation ≈ netload
 end
 
-@testset "plot_demand window aliases apply on the PSY.System path" begin
+@testset "plot_demand accepts a Dates.Period horizon on the PSY.System path" begin
     sys = deepcopy(PSB.build_system(PSB.PSITestSystems, "c_sys5_uc"))
     initial_times = collect(get_forecast_initial_times(sys))
     t0 = initial_times[2]
+    # The `Hour(3)` and `3` horizons below only mean the same thing on an hourly
+    # axis, so pin the fixture's resolution rather than assume it.
+    axis = get_demand_data(sys)[!, PA.DATETIME_COL]
+    @test axis[2] - axis[1] == Hour(1)
 
-    full = total_trace(
-        plot_demand(sys; backend = PG.PlotlyLightBackend(), set_display = false),
-    )
     windowed = total_trace(
-        plot_demand(
-            sys;
-            backend = PG.PlotlyLightBackend(),
-            set_display = false,
-            start_time = t0,
-            len = 3,
-        ),
-    )
-    # `start_time`/`len` are documented aliases, so they must slice rather than
-    # be silently dropped, and must agree with the canonical spellings.
-    @test length(windowed) == 3
-    @test length(full) > 3
-    @test windowed ≈ total_trace(
         plot_demand(
             sys;
             backend = PG.PlotlyLightBackend(),
             set_display = false,
             initial_time = t0,
             horizon = 3,
+        ),
+    )
+    @test length(windowed) == 3
+    @test length(
+        total_trace(
+            plot_demand(sys; backend = PG.PlotlyLightBackend(),
+                set_display = false),
+        ),
+    ) > 3
+
+    # A `Dates.Period` horizon must select the same rows as the equivalent
+    # integer count on this path too, not merely on the `IS.Results` path: the
+    # conversion happens in a different place (PowerAnalytics, rather than
+    # `_horizon_steps`), so agreement between the two is a real contract.
+    @test windowed ≈ total_trace(
+        plot_demand(
+            sys;
+            backend = PG.PlotlyLightBackend(),
+            set_display = false,
+            initial_time = t0,
+            horizon = Hour(3),
         ),
     )
 end
@@ -230,15 +239,14 @@ end
     @test_throws MethodError get_demand_data(res; aggregate = "Bus")
 end
 
-@testset "get_demand_data window key words and their aliases slice" begin
+@testset "get_demand_data window key words slice" begin
     sys = deepcopy(PSB.build_system(PSB.PSITestSystems, "c_sys5_uc"))
     t0 = collect(get_forecast_initial_times(sys))[2]
 
     full = get_demand_data(sys)
-    windowed = get_demand_data(sys; start_time = t0, len = 3)
+    windowed = get_demand_data(sys; initial_time = t0, horizon = 3)
     @test DataFrames.nrow(windowed) == 3
     @test DataFrames.nrow(full) > 3
-    @test windowed == get_demand_data(sys; initial_time = t0, horizon = 3)
 
     # The `System` path groups columns, so `aggregate` has to reach the reader.
     @test names(get_demand_data(sys; aggregate = "System")) !=

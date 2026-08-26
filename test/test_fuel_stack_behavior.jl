@@ -217,7 +217,7 @@ function test_fuel_stack(backend_pkg::String, backend::PG.PlottingBackend)
         @test series_labels(p) == ["Load"]
         @test series_values(p, "Load") ≈ expected[!, "Load"]
 
-        # Legacy time-window kwargs must keep working through the migration.
+        # The time-window kwargs must keep slicing through the migration.
         p_h = plot_demand(
             fuel_results_uc;
             backend = backend,
@@ -238,16 +238,6 @@ function test_fuel_stack(backend_pkg::String, backend::PG.PlottingBackend)
         )
         @test series_values(p_it, "Load") ≈ expected[25:26, "Load"]
 
-        # The start_time/len spellings behave identically to initial_time/horizon.
-        p_sl = plot_demand(
-            fuel_results_uc;
-            backend = backend,
-            set_display = false,
-            start_time = t0,
-            len = 2,
-        )
-        @test series_values(p_sl, "Load") ≈ expected[25:26, "Load"]
-
         # A `Dates.Period` horizon means the same thing as the equivalent integer
         # count of time periods. The `PSY.System` path has always accepted one
         # (PowerAnalytics converts it); the results path used to raise a
@@ -267,7 +257,7 @@ function test_fuel_stack(backend_pkg::String, backend::PG.PlottingBackend)
             backend = backend,
             set_display = false,
             initial_time = t0,
-            len = Hour(2),
+            horizon = Hour(2),
         )
         @test series_values(p_pit, "Load") ≈ expected[25:26, "Load"]
 
@@ -301,6 +291,53 @@ function test_fuel_stack(backend_pkg::String, backend::PG.PlottingBackend)
         )
         @test series_values(p_f, "Load") ≈ expected_f[!, "Load"]
         @test sum(expected_f[!, "Load"]) < sum(expected[!, "Load"])
+    end
+
+    @testset "$backend_pkg fuel plot slices the requested time window" begin
+        # `_fuel_data` applies the same `_time_window_indices` slicing as the
+        # demand path, but nothing exercised it through `plot_fuel`, so a
+        # regression in the fuel window would only have surfaced on demand plots.
+        palette_categories = PG.get_palette_category(PG.PALETTE)
+        (_, fuel_time) = PG._fuel_data(fuel_results_uc, palette_categories)
+        # Index 25 starts the second simulation step, as in the demand testset.
+        t0 = fuel_time[25]
+        window = 25:28
+
+        (_, windowed_time) = PG._fuel_data(
+            fuel_results_uc,
+            palette_categories;
+            initial_time = t0,
+            horizon = length(window),
+        )
+        @test length(fuel_time) > length(window)
+        @test windowed_time == fuel_time[window]
+
+        p_full = plot_fuel(
+            fuel_results_uc;
+            backend = backend,
+            set_display = false,
+            stack = true,
+            auto_units = false,
+        )
+        p_win = plot_fuel(
+            fuel_results_uc;
+            backend = backend,
+            set_display = false,
+            stack = true,
+            auto_units = false,
+            initial_time = t0,
+            horizon = length(window),
+        )
+
+        # Empty categories are dropped before windowing, so the trace set is
+        # unchanged; only the number of points may differ.
+        @test sort(series_labels(p_win)) == sort(series_labels(p_full))
+        @test all(s -> length(s.values) == length(window), plot_series(p_win))
+        @test any(s -> length(s.values) > length(window), plot_series(p_full))
+
+        # The net-load overlay is windowed with the stack rather than left at
+        # full length, and holds the values the full plot draws over the window.
+        @test series_values(p_win, "Load") ≈ series_values(p_full, "Load")[window]
     end
 end
 
