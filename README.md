@@ -28,16 +28,25 @@ package extensions. Load the backend you want **before** (or alongside)
   - [PlotlyLight](https://github.com/JuliaComputing/PlotlyLight.jl):
     lightweight interactive HTML plots — `using PlotlyLight`
 
+Every plot function takes a `backend` key word, defaulting to
+`CairoMakieBackend()`:
+
 ```julia
 using CairoMakie     # or `using PlotlyLight`
 using PowerGraphics
-using PowerAnalytics
 
 # where `res` is a PowerSimulations.SimulationResults object
-gen = get_generation_data(res)
-plot_powerdata(gen)        # CairoMakie
-# plot_powerdata_plotly(gen)  # PlotlyLight (`_plotly`-suffixed API)
+plot_fuel(res)                                   # CairoMakie (default)
+plot_fuel(res; backend = PlotlyLightBackend())   # PlotlyLight
 ```
+
+The `_plotly`-suffixed functions (`plot_fuel_plotly`, `plot_dataframe_plotly`,
+…) are deprecated: they still work but emit a warning. Replace them with the
+un-suffixed function plus `backend = PlotlyLightBackend()`.
+
+Every other public function returns a plot object. To get the demand *numbers*
+behind `plot_demand` — as a `DataFrame` with a `DateTime` column — use
+`get_demand_data(res)`.
 
 If neither backend is loaded, `PowerGraphics.jl` prints a warning at load
 time and the plotting functions throw an `ArgumentError` when called.

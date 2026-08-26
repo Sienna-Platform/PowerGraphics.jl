@@ -10,21 +10,21 @@ prefix to its acronym while keeping the full component name.
 # When does this fire?
 
 `label_fn` runs on the column names of the dataframe that is actually plotted.
-For `plot_powerdata` / `plot_results` / `plot_fuel`, the default
-`combine_categories = true` aggregates first — the resulting columns are bare
-category names (e.g. `"HydroDispatch"`, `"Natural Gas"`) without the `__`
-separator, so `label_short` is a no-op on them. To see shortening in action,
-pass `combine_categories = false` so the raw `Variable__Component` labels reach
+For `plot_results` / `plot_fuel`, the default `combine_categories = true`
+aggregates first — the resulting columns are bare category names (e.g.
+`"HydroDispatch"`, `"Natural Gas"`) without the `__` separator, so
+`label_short` is a no-op on them. To see shortening in action, pass
+`combine_categories = false` so the raw `Variable__Component` labels reach
 `label_fn`.
 
 # Usage
 
 ```julia
-plot_powerdata(gen; combine_categories = false)                                # default: "APV: HydroDispatch"
-plot_powerdata(gen; combine_categories = false, label_fn = label_component)    # "HydroDispatch"
-plot_powerdata(gen; combine_categories = false, label_fn = label_acronym)      # "APV__HD"
-plot_powerdata(gen; combine_categories = false, label_fn = label_truncate(20)) # truncate to 20 chars
-plot_powerdata(gen; combine_categories = false, label_fn = s -> s)             # original full labels
+plot_results(res; combine_categories = false)                                # default: "APV: HydroDispatch"
+plot_results(res; combine_categories = false, label_fn = label_component)    # "HydroDispatch"
+plot_results(res; combine_categories = false, label_fn = label_acronym)      # "APV__HD"
+plot_results(res; combine_categories = false, label_fn = label_truncate(20)) # truncate to 20 chars
+plot_results(res; combine_categories = false, label_fn = s -> s)             # original full labels
 ```
 """
 
@@ -133,11 +133,11 @@ Can be composed with other label functions.
 
 # Example
 ```julia
-plot_powerdata(gen; label_fn = label_truncate(20))
+plot_results(res; label_fn = label_truncate(20))
 # "ActivePowerVariable…"
 
 # Compose with label_short:
-plot_powerdata(gen; label_fn = s -> label_truncate(15)(label_short(s)))
+plot_results(res; label_fn = s -> label_truncate(15)(label_short(s)))
 ```
 """
 function label_truncate(n::Int)

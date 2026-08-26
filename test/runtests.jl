@@ -42,6 +42,11 @@ const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 PA_DIR = string(dirname(dirname(pathof(PowerAnalytics))))
 include(joinpath(PA_DIR, "test", "test_data", "results_data.jl"))
 
+# Shared helpers, not a test file: `@includetests` only globs `test_*.jl`, so
+# this has to be included explicitly, and it must be included here rather than
+# from a test file so that running a single file still gets it.
+include(joinpath(TEST_DIR, "plot_introspection.jl"))
+
 LOG_LEVELS = Dict(
     "Debug" => Logging.Debug,
     "Info" => Logging.Info,

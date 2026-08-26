@@ -31,9 +31,12 @@ Nuclear:
   - {gentype: Any, primemover: null, fuel: NUCLEAR}
 Geothermal:
   - {gentype: Any, primemover: null, fuel: GEOTHERMAL}
+# Fuel names must be valid PowerSystems.ThermalFuels entries: the new
+# PowerAnalytics mapping parser resolves them to real enum values and throws on
+# typos (the old parser stored raw strings that silently never matched).
 Biopower:
-  - {gentype: Any, primemover: null, fuel: AG_BIPRODUCT}
-  - {gentype: Any, primemover: null, fuel: WOOD_WASTE}
+  - {gentype: Any, primemover: null, fuel: AG_BYPRODUCT}
+  - {gentype: Any, primemover: null, fuel: WOOD_WASTE_SOLIDS}
 CSP:
   - {gentype: Any, primemover: CP, fuel: null}
 Other:

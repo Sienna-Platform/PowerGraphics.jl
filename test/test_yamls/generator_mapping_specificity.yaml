@@ -1,0 +1,34 @@
+# A generator mapping built so that the specificity ranking is the ONLY thing
+# that can decide where a component lands. Every thermal rule below names the
+# same `gentype`, so the component-type distance ties across all of them and the
+# prime mover / fuel wildcards have to break the tie.
+#
+# Against the `5_bus_hydro_uc_sys` fixture system:
+#   Solitude, Alta  (CT, NATURAL_GAS) -> NGCombustionTurbine (beats BroadThermal
+#                                        on prime mover AND fuel)
+#   Brighton        (ST, COAL)        -> CoalOnly            (beats BroadThermal
+#                                        on fuel ALONE)
+#   Park City, Sundance (CC, NATURAL_GAS) -> BroadThermal    (nothing narrower
+#                                        matches them)
+BroadThermal:
+  - {gentype: ThermalStandard, primemover: null, fuel: null}
+NGCombustionTurbine:
+  - {gentype: ThermalStandard, primemover: CT, fuel: NATURAL_GAS}
+CoalOnly:
+  - {gentype: ThermalStandard, primemover: null, fuel: COAL}
+# `ACBus` cannot intersect the `StaticInjection` root type PowerAnalytics parses
+# with, so `make_fuel_component_selector` returns `nothing` for the first rule
+# and this category ends up with two sub-selectors for three listed rules. It is
+# here so the group/rule correspondence check has to replay that drop at the
+# right position instead of pairing groups with rules off by one.
+Hydropower:
+  - {gentype: ACBus, primemover: null, fuel: null}
+  - {gentype: HydroGen, primemover: null, fuel: null}
+  - {gentype: Any, primemover: HY, fuel: null}
+# The remaining generators of the fixture system, so the mapping covers the pool
+# and nothing is routed to "Other" -- that bucket logs at Error level, which the
+# suite's logger treats as a failure.
+PV:
+  - {gentype: Any, primemover: PVe, fuel: null}
+Wind:
+  - {gentype: Any, primemover: WT, fuel: null}

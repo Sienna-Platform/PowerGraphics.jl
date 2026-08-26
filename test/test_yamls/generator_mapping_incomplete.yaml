@@ -1,0 +1,11 @@
+# A deliberately incomplete generator mapping: the hydro components of the
+# test system match no category, so `plot_fuel` must route them to "Other" and
+# log an error.
+PV:
+  - {gentype: Any, primemover: PVe, fuel: null}
+Wind:
+  - {gentype: Any, primemover: WT, fuel: null}
+Storage:
+  - {gentype: Any, primemover: BA, fuel: null}
+Thermal:
+  - {gentype: ThermalStandard, primemover: null, fuel: null}

@@ -16,67 +16,31 @@ function PowerGraphics._empty_plot(backend::PowerGraphics.CairoMakieBackend)
     return CairoMakiePlot(fig, ax, 0, false)
 end
 
+PowerGraphics._drawn_series_count(
+    plot::CairoMakiePlot,
+    ::PowerGraphics.CairoMakieBackend,
+) = plot.series_count
+
 function PowerGraphics._dataframe_plots_internal(
-    plot::Union{CairoMakiePlot, Nothing},
-    variable::DataFrames.DataFrame,
+    plot::CairoMakiePlot,
     time_range::Array,
-    backend::PowerGraphics.CairoMakieBackend;
+    backend::PowerGraphics.CairoMakieBackend,
+    opts::PowerGraphics._PlotOptions;
     kwargs...,
 )
-    save_fig = get(kwargs, :save, nothing)
-    title = get(kwargs, :title, " ")
-    bar = get(kwargs, :bar, false)
-    stack = get(kwargs, :stack, false)
-    nofill = get(kwargs, :nofill, false)
-    stair = get(kwargs, :stair, false)
-    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
-    linestyle = get(kwargs, :linestyle, :solid)
-    linewidth = get(kwargs, :linewidth, 1)
-
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
-
-    if isnothing(plot)
-        plot = PowerGraphics._empty_plot(backend)
-    end
-
-    ndf = PowerGraphics.PA.no_datetime(variable)
-    column_names = DataFrames.names(ndf)
-    existing_series = plot.series_count
-    seriescolor = PowerGraphics.set_seriescolor(
-        get(
-            kwargs,
-            :seriescolor,
-            PowerGraphics.get_palette_cairomakie(
-                get(kwargs, :palette, PowerGraphics.PALETTE),
-            ),
-        ),
-        vcat(ones(existing_series), column_names),
-    )[(existing_series + 1):end]
-
-    if isempty(variable)
-        @warn "Plot dataframe empty: skipping plot creation"
-        return plot
-    end
+    data = opts.data
+    labels = opts.column_labels
+    seriescolor = opts.seriescolor
+    interval = opts.interval
 
     # CairoMakie.band doesn't allow for DateTime axes. Every plot now gets
     # float axes instead so plots can be layered on the same Axis.
     time_range_float = Dates.datetime2unix.(time_range)
 
-    data = Matrix(ndf)
-    power_scale = get(kwargs, :power_scale, 1.0)
-    if power_scale != 1.0
-        data = data ./ power_scale
-    end
-    labels = [label_fn(label) for label in column_names]
-
-    plot.axis.xlabel = "$time_interval"
-    plot.axis.ylabel = get(kwargs, :y_label, "")
-    if title != " "  # Only set title if not default
-        plot.axis.title = title
+    plot.axis.xlabel = opts.x_label
+    plot.axis.ylabel = opts.y_label
+    if !isnothing(opts.title)
+        plot.axis.title = opts.title
     end
 
     # For stacked bar plots CairoMakie's auto-legend extraction fails because a
@@ -85,10 +49,10 @@ function PowerGraphics._dataframe_plots_internal(
     # manually with PolyElement below.
     bar_legend_entries = nothing
 
-    if bar
+    if opts.bar
         plot_data = sum(data; dims = 1) ./ interval
 
-        if stack
+        if opts.stack
             # CairoMakie stacks within a single barplot! call when given
             # per-element stack ids. Plotting one slice per call (each with
             # stack=[1]) just overlays bars at the same x — that's what the
@@ -129,15 +93,13 @@ function PowerGraphics._dataframe_plots_internal(
         end
         plot.axis.xgridvisible = false
     else
-        if stack && !nofill
+        draw_order = PowerGraphics._series_draw_order(opts.series_negative)
+        if opts.stack && !opts.nofill
             # Sign-aware stacked area: positive series stack upward from 0,
             # negative series (e.g. storage charging) stack downward from 0 so
             # charging renders below the zero axis.
-            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
-            # Draw negative (e.g. storage charging) series first so they sit at
-            # the back; positive generation bands/outlines render on top.
-            is_neg = [sum(view(data, :, ix)) < 0 for ix in 1:length(labels)]
-            draw_order = vcat(findall(is_neg), findall(.!is_neg))
+            lower_b, upper_b =
+                PowerGraphics._signed_stack_bounds(data, opts.series_negative)
             for ix in draw_order
                 lo = lower_b[:, ix]
                 up = upper_b[:, ix]
@@ -145,7 +107,7 @@ function PowerGraphics._dataframe_plots_internal(
                 outer = ifelse.(data[:, ix] .>= 0, up, lo)
                 color = seriescolor[ix]
 
-                if stair
+                if opts.stair
                     CairoMakie.stairs!(
                         plot.axis,
                         time_range_float,
@@ -153,8 +115,8 @@ function PowerGraphics._dataframe_plots_internal(
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
-                        linestyle = linestyle,
-                        linewidth = linewidth,
+                        linestyle = opts.linestyle,
+                        linewidth = opts.linewidth,
                     )
                     CairoMakie.band!(
                         plot.axis,
@@ -179,16 +141,15 @@ function PowerGraphics._dataframe_plots_internal(
                     )
                 end
             end
-        elseif stack && nofill
+        elseif opts.stack && opts.nofill
             # Sign-aware stacked lines: outer envelope of each band (positive
             # stacked up, negative stacked down).
-            lower_b, upper_b = PowerGraphics._signed_stack_bounds(data)
-            is_neg = [sum(view(data, :, ix)) < 0 for ix in 1:length(labels)]
-            draw_order = vcat(findall(is_neg), findall(.!is_neg))
+            lower_b, upper_b =
+                PowerGraphics._signed_stack_bounds(data, opts.series_negative)
             for ix in draw_order
                 outer = ifelse.(data[:, ix] .>= 0, upper_b[:, ix], lower_b[:, ix])
                 color = seriescolor[ix]
-                if stair
+                if opts.stair
                     CairoMakie.stairs!(
                         plot.axis,
                         time_range_float,
@@ -196,8 +157,8 @@ function PowerGraphics._dataframe_plots_internal(
                         color = color,
                         label = string(labels[ix]),
                         step = :post,
-                        linestyle = linestyle,
-                        linewidth = linewidth,
+                        linestyle = opts.linestyle,
+                        linewidth = opts.linewidth,
                     )
                 else
                     CairoMakie.lines!(
@@ -206,23 +167,23 @@ function PowerGraphics._dataframe_plots_internal(
                         outer;
                         color = color,
                         label = string(labels[ix]),
-                        linestyle = linestyle,
-                        linewidth = linewidth,
+                        linestyle = opts.linestyle,
+                        linewidth = opts.linewidth,
                     )
                 end
             end
         else
-            for ix in 1:length(labels)
+            for ix in draw_order
                 color = seriescolor[ix]
-                if stair
+                if opts.stair
                     CairoMakie.stairs!(
                         plot.axis,
                         time_range_float,
                         data[:, ix];
                         color = color,
                         label = string(labels[ix]),
-                        linestyle = linestyle,
-                        linewidth = linewidth,
+                        linestyle = opts.linestyle,
+                        linewidth = opts.linewidth,
                         step = :post,
                     )
                 else
@@ -232,8 +193,8 @@ function PowerGraphics._dataframe_plots_internal(
                         data[:, ix];
                         color = color,
                         label = string(labels[ix]),
-                        linestyle = linestyle,
-                        linewidth = linewidth,
+                        linestyle = opts.linestyle,
+                        linewidth = opts.linewidth,
                     )
                 end
             end
@@ -259,14 +220,12 @@ function PowerGraphics._dataframe_plots_internal(
             end
         end
 
-        legend_position = get(kwargs, :legend_position, :right)
-        legend_font_size = get(kwargs, :legend_font_size, nothing)
         legend_kwargs = Dict{Symbol, Any}()
-        if !isnothing(legend_font_size)
-            legend_kwargs[:labelsize] = legend_font_size
+        if !isnothing(opts.legend_font_size)
+            legend_kwargs[:labelsize] = opts.legend_font_size
         end
 
-        if legend_position == :bottom
+        if opts.legend_position == :bottom
             if !isnothing(bar_legend_entries)
                 bar_labels, bar_colors = bar_legend_entries
                 elems = [CairoMakie.PolyElement(; color = c) for c in bar_colors]
@@ -306,12 +265,10 @@ function PowerGraphics._dataframe_plots_internal(
         plot.has_legend = true
     end
 
-    get(kwargs, :set_display, true) && display(plot.figure)
+    opts.set_display && display(plot.figure)
 
-    title = title == " " ? "dataframe" : title
-    if !isnothing(save_fig)
-        format = get(kwargs, :format, "png")
-        save_plot(plot, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    if !isnothing(opts.save_file)
+        save_plot(plot, opts.save_file, backend; kwargs...)
     end
 
     return plot
@@ -339,7 +296,7 @@ function PowerGraphics.save_plot(
         throw(
             ArgumentError(
                 "HTML output is not supported by the CairoMakie backend; " *
-                "use a `_plotly` plot function (which uses PlotlyLight) or " *
+                "pass `backend = PlotlyLightBackend()` to the plot function or " *
                 "choose a raster/vector format such as png, pdf, or svg.",
             ),
         )
