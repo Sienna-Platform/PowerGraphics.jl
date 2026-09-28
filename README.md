@@ -4,7 +4,7 @@
 |:---:|:---:|
 | [![][docs-sienna-img]][docs-sienna-url] [![][docs-stable-img]][docs-stable-url] [![][docs-dev-img]][docs-dev-url] | [![Main - CI](https://github.com/Sienna-Platform/PowerGraphics.jl/actions/workflows/main-tests.yml/badge.svg)](https://github.com/Sienna-Platform/PowerGraphics.jl/actions/workflows/main-tests.yml) [![codecov](https://codecov.io/gh/Sienna-Platform/PowerGraphics.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/Sienna-Platform/PowerGraphics.jl) [<img src="https://img.shields.io/badge/slack-@Sienna/PG-sienna.svg?logo=slack">](https://join.slack.com/t/core-sienna/shared_invite/zt-glam9vdu-o8A9TwZTZqqNTKHa7q3BpQ) [![PowerGraphics.jl Downloads](https://img.shields.io/badge/dynamic/json?url=http%3A%2F%2Fjuliapkgstats.com%2Fapi%2Fv1%2Ftotal_downloads%2FPowerGraphics&query=total_requests&label=Downloads)](http://juliapkgstats.com/pkg/PowerGraphics) |
 
-[docs-sienna-img]: https://img.shields.io/badge/Main_Sienna_docs-blue.svg
+[docs-sienna-img]: https://img.shields.io/badge/Central_Sienna_docs-blue.svg
 [docs-sienna-url]: https://sienna-platform.github.io/Sienna/SiennaDocs/docs/build/index/
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://sienna-platform.github.io/PowerGraphics.jl/stable/
