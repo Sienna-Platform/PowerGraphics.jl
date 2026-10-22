@@ -1,0 +1,9 @@
+# Incomplete mapping: hydro components match no category and go to "Other".
+PV:
+  - {gentype: Any, primemover: PVe, fuel: null}
+Wind:
+  - {gentype: Any, primemover: WT, fuel: null}
+Storage:
+  - {gentype: Any, primemover: BA, fuel: null}
+Thermal:
+  - {gentype: ThermalStandard, primemover: null, fuel: null}

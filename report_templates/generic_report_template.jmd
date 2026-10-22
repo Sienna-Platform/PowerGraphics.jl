@@ -1,51 +1,30 @@
 ---
-title : Weave example
+title : Simulation Report
 author : Sienna
-date : 1-14
 ---
 
-# Bar Plots
+# Generation by Fuel
 
 ```julia; echo = false
 using PowerGraphics
 using PowerAnalytics
 
-PowerGraphics._report_plot_fuel(
-    WEAVE_ARGS["backend"],
-    WEAVE_ARGS["results"];
-    bar = true,
-    stack = true,
-)
+results = WEAVE_ARGS["results"]
+backend = WEAVE_ARGS["backend"]
+
+plot_fuel(results; backend = backend)
 ```
 
-# Stack Plots
+# Reserves by Fuel
 
 ```julia; echo = false
-PowerGraphics._report_plot_fuel(WEAVE_ARGS["backend"], WEAVE_ARGS["results"])
-```
-
-# Tables
-
-### Generation
-```julia; echo = false
-for (k,v) in  get_generation_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
-
-### Load
-```julia; echo = false
-for (k,v) in  get_load_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
-end
-```
-
-### Services
-```julia; echo = false
-for (k,v) in  get_service_data(WEAVE_ARGS["results"]).data
-    display(k)
-    display(v)
+# One stack per reserve product: up and down products must not be summed.
+services = PowerAnalytics.get_reserve_services(results)
+if isempty(services)
+    println("No reserve results in this simulation.")
+else
+    for service in services
+        plot_fuel(results; backend = backend, service = service)
+    end
 end
 ```

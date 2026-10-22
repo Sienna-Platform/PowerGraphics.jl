@@ -1,0 +1,21 @@
+# Mapping where only rule specificity decides the category. Expected, on
+# `5_bus_hydro_uc_sys`:
+#   Solitude, Alta (CT, NATURAL_GAS)      -> NGCombustionTurbine
+#   Brighton (ST, COAL)                   -> CoalOnly
+#   Park City, Sundance (CC, NATURAL_GAS) -> BroadThermal
+BroadThermal:
+  - {gentype: ThermalStandard, primemover: null, fuel: null}
+NGCombustionTurbine:
+  - {gentype: ThermalStandard, primemover: CT, fuel: NATURAL_GAS}
+CoalOnly:
+  - {gentype: ThermalStandard, primemover: null, fuel: COAL}
+# The `ACBus` rule is dropped by PowerAnalytics (not a `StaticInjection`).
+Hydropower:
+  - {gentype: ACBus, primemover: null, fuel: null}
+  - {gentype: HydroGen, primemover: null, fuel: null}
+  - {gentype: Any, primemover: HY, fuel: null}
+# Remaining generators, so nothing is routed to "Other".
+PV:
+  - {gentype: Any, primemover: PVe, fuel: null}
+Wind:
+  - {gentype: Any, primemover: WT, fuel: null}

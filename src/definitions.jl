@@ -53,19 +53,6 @@ end
 
 const PALETTE = load_palette()
 
-function get_default_palette(palette)
-    default_palette = PaletteColor[]
-    default_order = [6, 52, 14, 1, 32, 7, 18, 20, 27, 53, 17] # the default order from the color palette #
-    for i in default_order
-        for p in palette
-            if p.order == i
-                push!(default_palette, p)
-            end
-        end
-    end
-    return default_palette
-end
-
 # Recursively find all subtypes: useful for categorizing variables
 function all_subtypes(t::Type)
     st = [t]
@@ -81,10 +68,7 @@ function get_palette_cairomakie(palette)
 end
 
 function get_palette_plotly(palette)
-    getfield.(get_default_palette(palette), :RGB)
-end
-
-function get_palette_plotly_fuel(palette)
+    # PlotlyLight expects colors as RGB strings.
     getfield.(palette, :RGB)
 end
 
@@ -92,6 +76,7 @@ function get_palette_category(palette)
     getfield.(palette, :category)
 end
 
+# Default series colors: the full palette, in each backend's color representation.
 function get_palette_seriescolor(backend::CairoMakieBackend, palette)
     return get_palette_cairomakie(palette)
 end
@@ -100,11 +85,9 @@ function get_palette_seriescolor(backend::PlotlyLightBackend, palette)
     return get_palette_plotly(palette)
 end
 
-# Map each fuel-category column of `data` to a palette color, falling back to
-# the cycled `fallback_colors` for categories absent from the palette. Backend
-# selection only differs in which palette accessors supply the two color
-# vectors, so the matching loop is shared.
-function _match_fuel_colors(names, palette, color_range, fallback_colors)
+# Map each fuel-category name to its palette color, cycling through
+# `color_range` for categories absent from the palette.
+function _match_fuel_colors(names, palette, color_range)
     color_fuel =
         DataFrames.DataFrame(; fuels = get_palette_category(palette), colors = color_range)
     default = Vector{eltype(color_range)}()
@@ -115,7 +98,7 @@ function _match_fuel_colors(names, palette, color_range, fallback_colors)
             push!(default, color_fuel[matched_rows[1], :colors])
         else
             @debug "No palette color for fuel category '$name', using fallback"
-            push!(default, fallback_colors[mod1(fallback_idx, length(fallback_colors))])
+            push!(default, color_range[mod1(fallback_idx, length(color_range))])
             fallback_idx += 1
         end
     end
@@ -124,22 +107,9 @@ end
 
 function match_fuel_colors(
     data::DataFrames.DataFrame,
-    backend::CairoMakieBackend;
+    backend::PlottingBackend;
     palette = PALETTE,
 )
-    colors = get_palette_cairomakie(palette)
-    return _match_fuel_colors(DataFrames.names(data), palette, colors, colors)
-end
-
-function match_fuel_colors(
-    data::DataFrames.DataFrame,
-    backend::PlotlyLightBackend;
-    palette = PALETTE,
-)
-    return _match_fuel_colors(
-        DataFrames.names(data),
-        palette,
-        get_palette_plotly_fuel(palette),
-        get_palette_plotly(palette),
-    )
+    colors = get_palette_seriescolor(backend, palette)
+    return _match_fuel_colors(DataFrames.names(data), palette, colors)
 end

@@ -4,70 +4,54 @@ function PowerGraphics._empty_plot(backend::PowerGraphics.PlotlyLightBackend)
     return PlotlyLight.Plot()
 end
 
+PowerGraphics._drawn_series_count(
+    plot::PlotlyLight.Plot,
+    ::PowerGraphics.PlotlyLightBackend,
+) = length(plot.data)
+
+# A handle of another backend reaches these once this backend is loaded.
+PowerGraphics._drawn_series_count(::Any, backend::PowerGraphics.PlotlyLightBackend) =
+    PowerGraphics._backend_mismatch(backend)
+
 function PowerGraphics._dataframe_plots_internal(
-    plot,
-    variable::DataFrames.DataFrame,
-    time_range::Array,
-    backend::PowerGraphics.PlotlyLightBackend;
+    ::Any,
+    ::Array,
+    backend::PowerGraphics.PlotlyLightBackend,
+    ::PowerGraphics._PlotOptions;
     kwargs...,
 )
-    save_fig = get(kwargs, :save, nothing)
-    y_label = get(kwargs, :y_label, "")
-    title = get(kwargs, :title, " ")
-    stack = get(kwargs, :stack, false)
-    bar = get(kwargs, :bar, false)
-    nofill = get(kwargs, :nofill, !bar && !stack)
-    label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
+    return PowerGraphics._backend_mismatch(backend)
+end
 
-    # Guard before any `plot.data` access — callers may pass `nothing` to ask
-    # for a fresh plot.
-    isnothing(plot) && (plot = PowerGraphics._empty_plot(backend))
+# Stack group of the series of one sign in a call drawn after `offset` traces.
+_sign_stack_group(offset::Int, negative::Bool) =
+    negative ? "stack_$(offset)_negative" : "stack_$(offset)_positive"
 
-    ndf = PowerGraphics.PA.no_datetime(variable)
-    names = [label_fn(name) for name in DataFrames.names(ndf)]
+function PowerGraphics._dataframe_plots_internal(
+    plot::PlotlyLight.Plot,
+    time_range::Array,
+    backend::PowerGraphics.PlotlyLightBackend,
+    opts::PowerGraphics._PlotOptions;
+    kwargs...,
+)
+    names = opts.column_labels
+    seriescolor = opts.seriescolor
+    interval = opts.interval
+    plot_data = opts.data
+    # Stack group names are unique to this call.
     plot_length = length(plot.data)
-    seriescolor = permutedims(
-        PowerGraphics.set_seriescolor(
-            get(
-                kwargs,
-                :seriescolor,
-                PowerGraphics.get_palette_plotly(
-                    get(kwargs, :palette, PowerGraphics.PALETTE),
-                ),
-            ),
-            vcat(ones(plot_length), names),
-        )[(plot_length + 1):end],
-    )
 
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
+    line_shape = opts.stair ? "hv" : "linear"
+    # Plotly takes the dash style as a string.
+    line_dash = string(opts.linestyle)
 
-    if isempty(variable)
-        @warn "Plot dataframe empty: skipping plot creation"
-        plot_data = Array{Float64}(undef, 0, 0)
-    else
-        plot_data = Matrix(ndf)
-    end
-    power_scale = get(kwargs, :power_scale, 1.0)
-    if power_scale != 1.0 && !isempty(plot_data)
-        plot_data = plot_data ./ power_scale
-    end
-
-    plot_type = bar ? "bar" : "scatter"
-    line_shape = get(kwargs, :stair, false) ? "hv" : "linear"
-    line_dash = get(kwargs, :line_dash, "solid")
-
-    if bar
+    if opts.bar
         plot_data = sum(plot_data; dims = 1) ./ interval
-        if nofill
+        if opts.nofill
             plot_data = [plot_data; plot_data]
             x_data = [-0.5, 0.5]
             for ix = 1:length(names)
                 y_data = plot_data[:, ix]
-                sign_group = sum(y_data) >= 0 ? 0 : 10
 
                 trace_config = PlotlyLight.Config(;
                     type = "scatter",
@@ -78,13 +62,15 @@ function PowerGraphics._dataframe_plots_internal(
                     line = PlotlyLight.Config(;
                         color = seriescolor[ix],
                         dash = line_dash,
+                        width = opts.linewidth,
                         shape = line_shape,
                     ),
                     showlegend = true,
                 )
 
-                if stack
-                    trace_config.stackgroup = string(plot_length + 1 + sign_group)
+                if opts.stack
+                    trace_config.stackgroup =
+                        _sign_stack_group(plot_length, opts.series_negative[ix])
                     trace_config.fillcolor = "transparent"
                 end
 
@@ -93,7 +79,6 @@ function PowerGraphics._dataframe_plots_internal(
         else
             for ix = 1:length(names)
                 y_data = vec(plot_data[:, ix])
-                sign_group = sum(y_data) >= 0 ? 0 : 10
 
                 trace_config = PlotlyLight.Config(;
                     type = "bar",
@@ -103,8 +88,9 @@ function PowerGraphics._dataframe_plots_internal(
                     showlegend = true,
                 )
 
-                if stack
-                    trace_config.stackgroup = string(plot_length + 1 + sign_group)
+                if opts.stack
+                    trace_config.stackgroup =
+                        _sign_stack_group(plot_length, opts.series_negative[ix])
                     trace_config.fillcolor = seriescolor[ix]
                 end
 
@@ -112,13 +98,8 @@ function PowerGraphics._dataframe_plots_internal(
             end
         end
     else
-        # Scatter plot. Add negative (e.g. storage charging) series first so
-        # they sit at the back; positive generation renders on top.
-        is_neg = [sum(view(plot_data, :, ix)) < 0 for ix in 1:length(names)]
-        draw_order = vcat(findall(is_neg), findall(.!is_neg))
-        for ix in draw_order
+        for ix in PowerGraphics._series_draw_order(opts.series_negative)
             data_to_plot = plot_data[:, ix]
-            sign_group = sum(data_to_plot) >= 0 ? 0 : 10
 
             trace_config = PlotlyLight.Config(;
                 type = "scatter",
@@ -129,21 +110,23 @@ function PowerGraphics._dataframe_plots_internal(
                 line = PlotlyLight.Config(;
                     color = seriescolor[ix],
                     dash = line_dash,
+                    width = opts.linewidth,
                     shape = line_shape,
                 ),
                 showlegend = true,
             )
 
-            if stack
-                trace_config.stackgroup = string(plot_length + 1 + sign_group)
-                if nofill
+            if opts.stack
+                trace_config.stackgroup =
+                    _sign_stack_group(plot_length, opts.series_negative[ix])
+                if opts.nofill
                     trace_config.fillcolor = "transparent"
                 else
                     trace_config.fill = "tonexty"
                     trace_config.fillcolor = seriescolor[ix]
                 end
-            elseif !nofill
-                trace_config.stackgroup = string(ix + plot_length)
+            elseif !opts.nofill
+                trace_config.stackgroup = "line_$(plot_length)_$(ix)"
                 trace_config.fill = "tonexty"
             end
 
@@ -153,16 +136,15 @@ function PowerGraphics._dataframe_plots_internal(
 
     plot.layout.yaxis.showticklabels = true
     plot.layout.yaxis.rangemode = "tozero"
-    plot.layout.yaxis.title.text = y_label
-    plot.layout.xaxis.showticklabels = !bar
-    plot.layout.xaxis.title.text = string(time_interval)
-    plot.layout.title.text = title
-    plot.layout.barmode = stack ? "relative" : "group"
+    plot.layout.yaxis.title.text = opts.y_label
+    plot.layout.xaxis.showticklabels = !opts.bar
+    plot.layout.xaxis.title.text = opts.x_label
+    if !isnothing(opts.title)
+        plot.layout.title.text = opts.title
+    end
+    plot.layout.barmode = opts.stack ? "relative" : "group"
 
-    legend_position = get(kwargs, :legend_position, :right)
-    legend_font_size = get(kwargs, :legend_font_size, nothing)
-
-    if legend_position == :bottom
+    if opts.legend_position == :bottom
         plot.layout.legend = PlotlyLight.Config(;
             orientation = "h",
             x = 0,
@@ -171,15 +153,13 @@ function PowerGraphics._dataframe_plots_internal(
             yanchor = "top",
         )
     end
-    if !isnothing(legend_font_size)
-        plot.layout.legend.font = PlotlyLight.Config(; size = legend_font_size)
+    if !isnothing(opts.legend_font_size)
+        plot.layout.legend.font = PlotlyLight.Config(; size = opts.legend_font_size)
     end
 
-    get(kwargs, :set_display, true) && display(plot)
-    if !isnothing(save_fig)
-        title = title == " " ? "dataframe" : title
-        format = get(kwargs, :format, "png")
-        save_plot(plot, joinpath(save_fig, "$title.$format"), backend; kwargs...)
+    opts.set_display && display(plot)
+    if !isnothing(opts.save_file)
+        save_plot(plot, opts.save_file, backend; kwargs...)
     end
     return plot
 end
@@ -207,7 +187,7 @@ function PowerGraphics.save_plot(
     save_kwargs =
         Dict{Symbol, Any}(((k, v) for (k, v) in kwargs if k in SUPPORTED_PLOTLY_SAVE_KWARGS))
     @info "saving plot" filename
-    if last(splitext(filename)) == ".html"
+    if lowercase(last(splitext(filename))) == ".html"
         open(filename, "w") do io
             show(io, MIME("text/html"), plot; save_kwargs...)
         end

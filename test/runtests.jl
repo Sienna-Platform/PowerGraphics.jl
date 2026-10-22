@@ -42,6 +42,12 @@ const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 PA_DIR = string(dirname(dirname(pathof(PowerAnalytics))))
 include(joinpath(PA_DIR, "test", "test_data", "results_data.jl"))
 
+const TEST_BACKENDS =
+    (("cairomakie", CairoMakieBackend()), ("plotlylight", PlotlyLightBackend()))
+
+# Shared plot introspection helpers (not matched by `@includetests`).
+include(joinpath(TEST_DIR, "plot_introspection.jl"))
+
 LOG_LEVELS = Dict(
     "Debug" => Logging.Debug,
     "Info" => Logging.Info,

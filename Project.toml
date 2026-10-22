@@ -24,7 +24,7 @@ Weave = "44d3d7a6-8a23-5bf8-98c5-b353f8df5ec9"
 [extensions]
 CairoMakieExt = "CairoMakie"
 PlotlyLightExt = "PlotlyLight"
-WeaveExt = ["PlotlyLight", "Weave"]
+WeaveExt = "Weave"
 
 [compat]
 CSV = "~0.9, 0.10"
@@ -34,7 +34,7 @@ DataFrames = "1"
 DataStructures = "~0.18, ~0.19"
 InfrastructureSystems = "3"
 PlotlyLight = "0.13.1"
-PowerAnalytics = "^1.1"
+PowerAnalytics = "^1.6"
 PowerSystems = "^5.10"
 TimeSeries = "~0.25"
 Weave = "0.10"
