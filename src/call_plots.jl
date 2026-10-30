@@ -334,9 +334,9 @@ plot = plot_dataframe(df, time_range)
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars per row.
-  Period mode requires increasing, unique `Date` or `DateTime` values and an empty
-  plot, with `nofill` and `stair` disabled.
+- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars
+  per row. Period mode requires increasing, unique `Date` or `DateTime` values and an
+  empty plot, with `nofill` and `stair` disabled.
 - `x_label::String = "Period start"`: axis label for period bars.
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
@@ -404,9 +404,8 @@ function _plot_dataframe!(
 )
     tr =
         typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
-    if any(column -> Missing <: eltype(column), eachcol(variable))
-        variable = DataFrames.disallowmissing(variable; error = false)
-    end
+    variable = copy(variable; copycols = false)
+    DataFrames.disallowmissing!(variable; error = false)
     bar_mode = get(kwargs, :bar_mode, :energy)
     bar_mode in (:energy, :period) ||
         throw(ArgumentError("bar_mode must be :energy or :period."))
@@ -414,12 +413,14 @@ function _plot_dataframe!(
         get(kwargs, :bar, false) || throw(ArgumentError("Period bars require bar = true."))
         (get(kwargs, :nofill, false) || get(kwargs, :stair, false)) &&
             throw(ArgumentError("Period bars do not support nofill or stair."))
-        values = Matrix(PA.no_datetime(variable))
-        (size(values, 1) == length(tr) && !isempty(values)) ||
+        data_columns = filter(!=(:DateTime), propertynames(variable))
+        (
+            DataFrames.nrow(variable) == length(tr) && !isempty(tr) &&
+            !isempty(data_columns)
+        ) ||
             throw(
                 ArgumentError("Supply matching nonempty period rows and category columns."),
             )
-        _validate_period_values(values)
         options = Dict{Symbol, Any}(kwargs)
         options[:period_labels] = _period_bar_labels(tr)
         return _dataframe_plots_internal(p, variable, tr, backend; options...)
@@ -453,9 +454,9 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
-- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars per row.
-  Period mode requires increasing, unique `Date` or `DateTime` values and an empty
-  plot, with `nofill` and `stair` disabled.
+- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars
+  per row. Period mode requires increasing, unique `Date` or `DateTime` values and an
+  empty plot, with `nofill` and `stair` disabled.
 - `x_label::String = "Period start"`: axis label for period bars.
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot

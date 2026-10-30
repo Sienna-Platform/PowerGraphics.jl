@@ -118,7 +118,7 @@ function test_plots(file_path::String, investment; backend_pkg::String = "cairom
     @testset "test $backend_pkg period bar plots" begin
         table = DataFrame(;
             DateTime = DateTime.([2030, 2035, 2045]),
-            Storage = [25.0, 0.0, 10.0],
+            Storage = [25, 0, 10],
             Wind = [100.0, 20.0, 0.0],
         )
         allowmissing!(table, [:Storage, :Wind])
@@ -174,6 +174,14 @@ function test_plots(file_path::String, investment; backend_pkg::String = "cairom
             bar_mode = :period,
             set_display = false,
         )
+        invalid = copy(table)
+        invalid.Wind[1] = NaN
+        @test_throws ArgumentError plot_dataframe_fn(
+            invalid;
+            bar = true,
+            bar_mode = :period,
+            set_display = false,
+        )
     end
 
     @testset "test $backend_pkg energy bar aggregation" begin
@@ -201,7 +209,6 @@ function test_plots(file_path::String, investment; backend_pkg::String = "cairom
                 reverse(valid),
                 DataFrame(; DateTime = [DateTime(2030), DateTime(2030)], Wind = [1.0, 2.0]),
                 DataFrame(; DateTime = [2030, 2035], Wind = [1.0, 2.0]),
-                DataFrame(; DateTime = valid.DateTime, Wind = [NaN, 2.0]),
                 DataFrame(; DateTime = valid.DateTime, Wind = [missing, 2.0]),
             )
                 @test_throws ArgumentError plot_dataframe_fn(
@@ -476,9 +483,11 @@ function test_plots(file_path::String, investment; backend_pkg::String = "cairom
             PSIP.ResourceTechnology;
             groupby = technology -> PA.get_generator_category(technology, mapping),
         )
-        backend =
-            backend_pkg == "cairomakie" ?
-            PG.CairoMakieBackend() : PG.PlotlyLightBackend()
+        backend = if backend_pkg == "cairomakie"
+            PG.CairoMakieBackend()
+        else
+            PG.PlotlyLightBackend()
+        end
         for (plot_fn, metric, title) in (
             (
                 plot_capacity_additions_fn,
@@ -624,11 +633,12 @@ function test_plots(file_path::String, investment; backend_pkg::String = "cairom
         end
     end
 end
-investment = PA.investment_results(run_test_investment_prob().results)
-try
-    test_plots(file_path, investment; backend_pkg = "cairomakie")
-    @info("done with CairoMakie, starting plotlylight")
-    test_plots(file_path, investment; backend_pkg = "plotlylight")
-finally
-    nothing
+let investment = PA.investment_results(run_test_investment_prob().results)
+    try
+        test_plots(file_path, investment; backend_pkg = "cairomakie")
+        @info("done with CairoMakie, starting plotlylight")
+        test_plots(file_path, investment; backend_pkg = "plotlylight")
+    finally
+        nothing
+    end
 end

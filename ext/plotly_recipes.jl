@@ -45,13 +45,13 @@ function PowerGraphics._dataframe_plots_internal(
 
     if period_bars
         time_interval = get(kwargs, :x_label, "Period start")
-        interval = 1.0
     else
         time_interval = PowerGraphics.IS.convert_compound_period(
             length(time_range) * (time_range[2] - time_range[1]),
         )
         interval =
-            Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
+            Dates.Millisecond(Dates.Hour(1)) /
+            Dates.Millisecond(time_range[2] - time_range[1])
     end
 
     if isempty(variable)
@@ -60,6 +60,7 @@ function PowerGraphics._dataframe_plots_internal(
     else
         plot_data = Matrix(ndf)
     end
+    period_bars && PowerGraphics._validate_period_values(plot_data)
     power_scale = get(kwargs, :power_scale, 1.0)
     if power_scale != 1.0 && !isempty(plot_data)
         plot_data = plot_data ./ power_scale
