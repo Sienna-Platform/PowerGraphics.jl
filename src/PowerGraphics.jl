@@ -7,6 +7,8 @@ export plot_dataframe, plot_dataframe_plotly
 export plot_powerdata, plot_powerdata_plotly
 export plot_results, plot_results_plotly
 export plot_fuel, plot_fuel_plotly
+export plot_capacity_additions, plot_capacity_additions_plotly
+export plot_installed_capacity, plot_installed_capacity_plotly
 export plot_demand!, plot_demand_plotly!
 export plot_dataframe!, plot_dataframe_plotly!
 export plot_powerdata!, plot_powerdata_plotly!

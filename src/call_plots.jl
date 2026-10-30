@@ -334,6 +334,10 @@ plot = plot_dataframe(df, time_range)
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
+- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars per row.
+  Period mode requires increasing, unique `Date` or `DateTime` values and an empty
+  plot, with `nofill` and `stair` disabled.
+- `x_label::String = "Period start"`: axis label for period bars.
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
@@ -370,6 +374,27 @@ function plot_dataframe_plotly(
     return plot_dataframe_plotly!(_empty_plot_plotly(), df, time_range; kwargs...)
 end
 
+_validate_period_values(::AbstractMatrix) =
+    throw(ArgumentError("Period-bar values must be real numbers without missing values."))
+function _validate_period_values(values::AbstractMatrix{<:Real})
+    all(isfinite, values) || throw(ArgumentError("Period-bar values must be finite."))
+    return
+end
+
+_period_bar_labels(::AbstractVector) =
+    throw(ArgumentError("Period starts must be Date or DateTime values."))
+function _period_bar_labels(time::AbstractVector{<:Union{Dates.Date, Dates.DateTime}})
+    (issorted(time) && allunique(time)) ||
+        throw(ArgumentError("Period starts must be unique and increasing."))
+    years = Dates.year.(time)
+    if allunique(years)
+        return string.(years)
+    elseif allunique(Dates.Date.(time))
+        return string.(Dates.Date.(time))
+    end
+    return string.(time)
+end
+
 function _plot_dataframe!(
     p,
     variable::DataFrames.DataFrame,
@@ -379,6 +404,26 @@ function _plot_dataframe!(
 )
     tr =
         typeof(time_range) == DataFrames.DataFrame ? time_range[:, 1] : collect(time_range)
+    if any(column -> Missing <: eltype(column), eachcol(variable))
+        variable = DataFrames.disallowmissing(variable; error = false)
+    end
+    bar_mode = get(kwargs, :bar_mode, :energy)
+    bar_mode in (:energy, :period) ||
+        throw(ArgumentError("bar_mode must be :energy or :period."))
+    if bar_mode == :period
+        get(kwargs, :bar, false) || throw(ArgumentError("Period bars require bar = true."))
+        (get(kwargs, :nofill, false) || get(kwargs, :stair, false)) &&
+            throw(ArgumentError("Period bars do not support nofill or stair."))
+        values = Matrix(PA.no_datetime(variable))
+        (size(values, 1) == length(tr) && !isempty(values)) ||
+            throw(
+                ArgumentError("Supply matching nonempty period rows and category columns."),
+            )
+        _validate_period_values(values)
+        options = Dict{Symbol, Any}(kwargs)
+        options[:period_labels] = _period_bar_labels(tr)
+        return _dataframe_plots_internal(p, variable, tr, backend; options...)
+    end
     return _dataframe_plots_internal(p, variable, tr, backend; kwargs...)
 end
 
@@ -408,6 +453,10 @@ If only the `DataFrame` is provided, it must have a column of `DateTime` values.
 - `title::String = "Title"`: Set a title for the plots
 - `stack::Bool = true`: stack plot traces
 - `bar::Bool` : create bar plot
+- `bar_mode::Symbol = :energy`: use `:period` with `bar = true` for equally spaced bars per row.
+  Period mode requires increasing, unique `Date` or `DateTime` values and an empty
+  plot, with `nofill` and `stair` disabled.
+- `x_label::String = "Period start"`: axis label for period bars.
 - `nofill::Bool` : force empty area fill
 - `stair::Bool`: Make a stair plot instead of a stack plot
 - `label_fn::Function = label_short`: function applied to legend labels (typically the raw `Variable__Component` strings produced by PowerAnalytics). Built-in options: `label_short`, `label_component`, `label_variable`, `label_acronym`, `label_first_word`, `label_truncate(n)`. Note that when `combine_categories = true` (the default for `plot_powerdata`, `plot_results`, and `plot_fuel`), columns are aggregated to category names *before* `label_fn` runs — those names don't contain `__`, so the default `label_short` is a no-op. Pass `combine_categories = false` to see the effect of `label_fn` on the raw labels.
@@ -634,6 +683,147 @@ end
     kwargs...,
 )
     return plot_powerdata_plotly!(p, PA.PowerData(results); kwargs...)
+end
+
+################################# Plotting Capacity Results ##########################
+
+"""
+    plot_capacity_additions(results)
+    plot_capacity_additions_plotly(results)
+
+Plots new supply capacity and storage discharge power in MW by investment period
+and technology category.
+
+# Arguments
+
+- `results` investment results returned by `PowerAnalytics.investment_results`.
+
+# Example
+
+```julia
+investment = PowerAnalytics.investment_results(results)
+plot = plot_capacity_additions(investment)
+```
+
+# Accepted Key Words
+
+- `generator_mapping_file = nothing` path to a YAML generator category mapping.
+- `filter_func = _ -> true` additional filter on available portfolio technologies.
+- `start_time = nothing` first investment period to include.
+- `len = nothing` number of investment periods to include.
+- `meta = nothing` formulation metadata when more than one formulation stores a technology.
+- `palette` category order and colors from a palette returned by [`load_palette`](@ref).
+- `seriescolor::Array` custom colors in palette category order.
+- `stack::Bool = true` use `false` for grouped bars.
+- `title::String = "Capacity additions"` plot title.
+- `y_label::String = "MW"` vertical axis label.
+- `power_scale = 1.0` capacity divisor. Set `y_label` to the corresponding unit.
+
+See [`plot_dataframe`](@ref) for display, saving and legend options.
+"""
+function plot_capacity_additions(result::IS.Results; kwargs...)
+    return _plot_capacity(
+        result,
+        PA.Metrics.calc_capacity_additions,
+        "Capacity additions",
+        CairoMakieBackend();
+        kwargs...,
+    )
+end
+
+@doc (@doc plot_capacity_additions) function plot_capacity_additions_plotly(
+    result::IS.Results;
+    kwargs...,
+)
+    return _plot_capacity(
+        result,
+        PA.Metrics.calc_capacity_additions,
+        "Capacity additions",
+        PlotlyLightBackend();
+        kwargs...,
+    )
+end
+
+"""
+    plot_installed_capacity(results)
+    plot_installed_capacity_plotly(results)
+
+Plots total installed supply capacity and storage discharge power in MW by investment
+period, including existing capacity and cumulative additions.
+
+Accepts the same investment results and keywords as [`plot_capacity_additions`](@ref),
+with the default title `"Installed capacity"`.
+"""
+function plot_installed_capacity(result::IS.Results; kwargs...)
+    return _plot_capacity(
+        result,
+        PA.Metrics.calc_installed_capacity,
+        "Installed capacity",
+        CairoMakieBackend();
+        kwargs...,
+    )
+end
+
+@doc (@doc plot_installed_capacity) function plot_installed_capacity_plotly(
+    result::IS.Results;
+    kwargs...,
+)
+    return _plot_capacity(
+        result,
+        PA.Metrics.calc_installed_capacity,
+        "Installed capacity",
+        PlotlyLightBackend();
+        kwargs...,
+    )
+end
+
+function _plot_capacity(
+    result::IS.Results,
+    metric,
+    title,
+    backend;
+    generator_mapping_file = nothing,
+    filter_func = _ -> true,
+    start_time = nothing,
+    len = nothing,
+    meta = nothing,
+    kwargs...,
+)
+    mapping = PA.get_generator_mapping(generator_mapping_file)
+    selector = PA.make_selector(
+        filter_func,
+        PA.PSIP.ResourceTechnology;
+        groupby = technology ->
+            something(
+                PA.get_generator_category(technology, mapping),
+                PA.UNMAPPED_GENERATOR_CATEGORY,
+            ),
+    )
+    table = PA.compute(
+        metric,
+        result,
+        selector;
+        start_time = start_time,
+        len = len,
+        meta = meta,
+    )
+    data = PA.no_datetime(table)
+    palette = get(kwargs, :palette, PALETTE)
+    palette_categories = get_palette_category(palette)
+    matched = intersect(palette_categories, DataFrames.names(data))
+    unmatched = setdiff(DataFrames.names(data), palette_categories)
+    DataFrames.select!(data, vcat(matched, sort(unmatched)))
+
+    options = Dict{Symbol, Any}(kwargs)
+    options[:bar] = true
+    options[:bar_mode] = :period
+    get!(options, :stack, true)
+    get!(options, :title, title)
+    get!(options, :y_label, "MW")
+    get!(options, :seriescolor) do
+        match_fuel_colors(data, backend; palette = palette)
+    end
+    return _plot_dataframe!(_empty_plot(backend), data, table.DateTime, backend; options...)
 end
 
 ################################# Plotting Fuel Plot of Results ##########################

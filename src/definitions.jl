@@ -136,10 +136,13 @@ function match_fuel_colors(
     backend::PlotlyLightBackend;
     palette = PALETTE,
 )
+    colors = get_palette_plotly_fuel(palette)
+    fallback_colors = get_palette_plotly(palette)
+    isempty(fallback_colors) && (fallback_colors = colors)
     return _match_fuel_colors(
         DataFrames.names(data),
         palette,
-        get_palette_plotly_fuel(palette),
-        get_palette_plotly(palette),
+        colors,
+        fallback_colors,
     )
 end
