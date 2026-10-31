@@ -16,6 +16,7 @@ function PowerGraphics._dataframe_plots_internal(
     title = get(kwargs, :title, " ")
     stack = get(kwargs, :stack, false)
     bar = get(kwargs, :bar, false)
+    period_bars = bar && get(kwargs, :bar_mode, :energy) == :period
     nofill = get(kwargs, :nofill, !bar && !stack)
     label_fn = get(kwargs, :label_fn, PowerGraphics.label_short)
 
@@ -26,6 +27,9 @@ function PowerGraphics._dataframe_plots_internal(
     ndf = PowerGraphics.PA.no_datetime(variable)
     names = [label_fn(name) for name in DataFrames.names(ndf)]
     plot_length = length(plot.data)
+    if period_bars && plot_length > 0
+        throw(ArgumentError("Period bars require an empty plot handle."))
+    end
     seriescolor = permutedims(
         PowerGraphics.set_seriescolor(
             get(
@@ -39,11 +43,16 @@ function PowerGraphics._dataframe_plots_internal(
         )[(plot_length + 1):end],
     )
 
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
+    if period_bars
+        time_interval = get(kwargs, :x_label, "Period start")
+    else
+        time_interval = PowerGraphics.IS.convert_compound_period(
+            length(time_range) * (time_range[2] - time_range[1]),
+        )
+        interval =
+            Dates.Millisecond(Dates.Hour(1)) /
+            Dates.Millisecond(time_range[2] - time_range[1])
+    end
 
     if isempty(variable)
         @warn "Plot dataframe empty: skipping plot creation"
@@ -51,6 +60,7 @@ function PowerGraphics._dataframe_plots_internal(
     else
         plot_data = Matrix(ndf)
     end
+    period_bars && PowerGraphics._validate_period_values(plot_data)
     power_scale = get(kwargs, :power_scale, 1.0)
     if power_scale != 1.0 && !isempty(plot_data)
         plot_data = plot_data ./ power_scale
@@ -60,7 +70,19 @@ function PowerGraphics._dataframe_plots_internal(
     line_shape = get(kwargs, :stair, false) ? "hv" : "linear"
     line_dash = get(kwargs, :line_dash, "solid")
 
-    if bar
+    if period_bars
+        for ix in eachindex(names)
+            trace_config = PlotlyLight.Config(;
+                type = "bar",
+                x = kwargs[:period_labels],
+                y = plot_data[:, ix],
+                marker = PlotlyLight.Config(; color = seriescolor[ix]),
+                name = names[ix],
+                showlegend = true,
+            )
+            plot(trace_config)
+        end
+    elseif bar
         plot_data = sum(plot_data; dims = 1) ./ interval
         if nofill
             plot_data = [plot_data; plot_data]
@@ -154,10 +176,15 @@ function PowerGraphics._dataframe_plots_internal(
     plot.layout.yaxis.showticklabels = true
     plot.layout.yaxis.rangemode = "tozero"
     plot.layout.yaxis.title.text = y_label
-    plot.layout.xaxis.showticklabels = !bar
+    plot.layout.xaxis.showticklabels = period_bars || !bar
     plot.layout.xaxis.title.text = string(time_interval)
     plot.layout.title.text = title
     plot.layout.barmode = stack ? "relative" : "group"
+    if period_bars
+        plot.layout.xaxis.type = "category"
+        plot.layout.xaxis.categoryorder = "array"
+        plot.layout.xaxis.categoryarray = kwargs[:period_labels]
+    end
 
     legend_position = get(kwargs, :legend_position, :right)
     legend_font_size = get(kwargs, :legend_font_size, nothing)
@@ -170,6 +197,9 @@ function PowerGraphics._dataframe_plots_internal(
             xanchor = "left",
             yanchor = "top",
         )
+    end
+    if period_bars
+        plot.layout.legend.traceorder = "normal"
     end
     if !isnothing(legend_font_size)
         plot.layout.legend.font = PlotlyLight.Config(; size = legend_font_size)

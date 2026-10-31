@@ -10,6 +10,8 @@ using PowerSystems
 using PowerGraphics
 using PowerAnalytics
 using PowerSimulations
+import PowerSystemsInvestments
+import PowerSystemsInvestmentsPortfolios
 using StorageSystemsSimulations
 using HiGHS
 using Weave
@@ -24,6 +26,8 @@ const IS = InfrastructureSystems
 const PSY = PowerSystems
 const PSI = PowerSimulations
 const PA = PowerAnalytics
+const PSIN = PowerSystemsInvestments
+const PSIP = PowerSystemsInvestmentsPortfolios
 const LOG_FILE = "PowerGraphics-test.log"
 
 const BASE_DIR = dirname(dirname(pathof(PowerGraphics)))
@@ -41,6 +45,7 @@ const generic_template = joinpath(template_dir, "generic_report_template.jmd")
 
 PA_DIR = string(dirname(dirname(pathof(PowerAnalytics))))
 include(joinpath(PA_DIR, "test", "test_data", "results_data.jl"))
+include(joinpath(PA_DIR, "test", "test_data", "investment_results_data.jl"))
 
 LOG_LEVELS = Dict(
     "Debug" => Logging.Debug,

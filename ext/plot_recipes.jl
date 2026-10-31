@@ -26,6 +26,7 @@ function PowerGraphics._dataframe_plots_internal(
     save_fig = get(kwargs, :save, nothing)
     title = get(kwargs, :title, " ")
     bar = get(kwargs, :bar, false)
+    period_bars = bar && get(kwargs, :bar_mode, :energy) == :period
     stack = get(kwargs, :stack, false)
     nofill = get(kwargs, :nofill, false)
     stair = get(kwargs, :stair, false)
@@ -33,11 +34,16 @@ function PowerGraphics._dataframe_plots_internal(
     linestyle = get(kwargs, :linestyle, :solid)
     linewidth = get(kwargs, :linewidth, 1)
 
-    time_interval = PowerGraphics.IS.convert_compound_period(
-        length(time_range) * (time_range[2] - time_range[1]),
-    )
-    interval =
-        Dates.Millisecond(Dates.Hour(1)) / Dates.Millisecond(time_range[2] - time_range[1])
+    if period_bars
+        time_interval = get(kwargs, :x_label, "Period start")
+    else
+        time_interval = PowerGraphics.IS.convert_compound_period(
+            length(time_range) * (time_range[2] - time_range[1]),
+        )
+        interval =
+            Dates.Millisecond(Dates.Hour(1)) /
+            Dates.Millisecond(time_range[2] - time_range[1])
+    end
 
     if isnothing(plot)
         plot = PowerGraphics._empty_plot(backend)
@@ -46,6 +52,13 @@ function PowerGraphics._dataframe_plots_internal(
     ndf = PowerGraphics.PA.no_datetime(variable)
     column_names = DataFrames.names(ndf)
     existing_series = plot.series_count
+    if period_bars && existing_series > 0
+        throw(
+            ArgumentError(
+                "Period bars require an empty plot handle to avoid overlapping independent stacks.",
+            ),
+        )
+    end
     seriescolor = PowerGraphics.set_seriescolor(
         get(
             kwargs,
@@ -62,11 +75,8 @@ function PowerGraphics._dataframe_plots_internal(
         return plot
     end
 
-    # CairoMakie.band doesn't allow for DateTime axes. Every plot now gets
-    # float axes instead so plots can be layered on the same Axis.
-    time_range_float = Dates.datetime2unix.(time_range)
-
     data = Matrix(ndf)
+    period_bars && PowerGraphics._validate_period_values(data)
     power_scale = get(kwargs, :power_scale, 1.0)
     if power_scale != 1.0
         data = data ./ power_scale
@@ -85,7 +95,22 @@ function PowerGraphics._dataframe_plots_internal(
     # manually with PolyElement below.
     bar_legend_entries = nothing
 
-    if bar
+    if period_bars
+        periods, categories = size(data)
+        xs = repeat(collect(1:periods); outer = categories)
+        groups = repeat(collect(1:categories); inner = periods)
+        colors = seriescolor[groups]
+        if stack
+            CairoMakie.barplot!(plot.axis, xs, vec(data);
+                stack = groups, color = colors)
+        else
+            CairoMakie.barplot!(plot.axis, xs, vec(data);
+                dodge = groups, color = colors)
+        end
+        bar_legend_entries = (string.(labels), collect(seriescolor))
+        plot.axis.xticks = (collect(1:periods), kwargs[:period_labels])
+        plot.axis.xgridvisible = false
+    elseif bar
         plot_data = sum(data; dims = 1) ./ interval
 
         if stack
@@ -129,6 +154,9 @@ function PowerGraphics._dataframe_plots_internal(
         end
         plot.axis.xgridvisible = false
     else
+        # CairoMakie.band doesn't allow for DateTime axes. Every plot now gets
+        # float axes instead so plots can be layered on the same Axis.
+        time_range_float = Dates.datetime2unix.(time_range)
         if stack && !nofill
             # Sign-aware stacked area: positive series stack upward from 0,
             # negative series (e.g. storage charging) stack downward from 0 so
