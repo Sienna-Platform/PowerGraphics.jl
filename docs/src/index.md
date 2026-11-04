@@ -31,9 +31,9 @@ analytics results into figures.
 
 ## How to use this documentation
 
-  - **Tutorials** — examples to help you *learn* plotting workflows
-  - **How to...** — task guides such as changing backends
-  - **Reference** — public API and developer notes for quick look-up
+  - **Tutorials** — Examples to help you *learn* how to use PowerGraphics.jl
+  - **How to...** — Directions to help guide your work for a particular task
+  - **Reference** — Technical references and API for a quick *look-up* during your work
 
 `PowerGraphics.jl` follows the [Diátaxis](https://diataxis.fr/) documentation framework.
 
